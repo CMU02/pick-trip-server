@@ -35,3 +35,15 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### Oh My CaludeCode ###
+.omc/*
+
+src/main/resources/application-dev.yaml
+
+### Environment Variables ###
+.env
+.env*
+
+### Claude ###
+/.claude/settings.local.json
