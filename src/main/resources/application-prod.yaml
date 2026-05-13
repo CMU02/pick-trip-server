@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:mysql://${DB_URL}:${DB_PORT}/${DB_SCHEMA}?serverTimezone=Asia/Seoul
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+
+public-data-portal:
+  key:
+    encode: ${PUBLIC_DATA_PORTAL_KEY}
+
+jwt:
+  secret-key: ${JWT_SECRET_KEY}
+  access-token-expire-time: 3600000
+  refresh-token-expire-time: 1209600000
+
