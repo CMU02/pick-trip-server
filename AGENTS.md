@@ -128,3 +128,63 @@ src/main/java/travel_agency/pick_trip
 ```
 
 에러 코드 목록과 HTTP 상태 매핑은 `.agents/docs/error-handling-flow.md`를 참고한다.
+
+# Known Gotchas
+
+## Java / Spring
+
+- Spring Boot 4.x 기준이므로 `javax.*` 대신 반드시 `jakarta.*`를 사용한다.
+  - 예: `javax.persistence.*` → `jakarta.persistence.*`
+  - 예: `javax.validation.*` → `jakarta.validation.*`
+- `@SpringBootTest`는 전체 컨텍스트를 로드하므로 단순 유닛 테스트에 남용하지 않는다.
+- Mockito 사용 시 `@Mock` + `@InjectMocks` 조합을 사용한다. `@MockBean`은 통합 테스트에서만 사용한다.
+
+## JPA / DB
+
+- `FetchType.EAGER`는 N+1 문제를 유발한다. 기본은 `LAZY`이며, 필요 시 fetch join으로 해결한다.
+- 개발 환경 Docker Compose DB 포트는 `3307`이다 (로컬 MySQL 충돌 회피).
+- `ddl-auto` 설정은 `validate` 또는 `none`만 사용한다. `create`, `create-drop`은 운영 데이터를 삭제한다.
+
+## Lombok
+
+- `@Data`는 `@EqualsAndHashCode`, `@ToString`을 포함해 Entity에서 순환 참조를 일으킨다. 절대 사용하지 않는다.
+- DTO는 `record`를 우선 검토한다. 단, `record`는 상속이 불가하므로 계층 구조가 필요하면 `@Value` 또는 일반 클래스를 사용한다.
+
+## 보안
+
+- JWT 토큰, OAuth Client Secret, DB 비밀번호는 `.env` 파일로 관리하며 Git에 커밋하지 않는다.
+- API 응답에서 서버 내부 예외 메시지(`exception.getMessage()`)를 그대로 노출하지 않는다.
+
+# Decision Log
+
+| 결정 | 이유 |
+|------|------|
+| OpenFeign 사용 | TourAPI·AI 외부 호출을 선언형으로 단순화하기 위해 선택. `RestTemplate`은 보일러플레이트가 많고, `WebClient`는 리액티브 전환 비용이 크다. |
+| DTO에 `record` 우선 | 불변성 보장 + Lombok `@Value` 의존 제거. Java 21 환경이므로 언어 기본 기능 활용. |
+| MySQL 선택 | 팀 친숙도와 Docker Compose 로컬 환경 설정 단순화. 운영 이관 시 RDS MySQL 사용 예정. |
+| 소셜 로그인만 지원 | MVP 범위에서 자체 회원가입·비밀번호 관리 복잡도를 제거. Kakao·Google OAuth로 인증 위임. |
+| Spring MVC (동기) 유지 | 팀 학습 비용과 TourAPI 동기 호출 특성 고려. 리액티브 전환은 MVP 이후 검토. |
+
+# AI Constraints
+
+다음 행동은 사용자가 명시적으로 요청하더라도 진행 전에 반드시 경고하고 확인을 받는다.
+
+## 절대 금지 (코드)
+
+- Entity 클래스에 `@Setter`, `@Data` 어노테이션 추가
+- Controller 메서드에서 Entity를 직접 반환 (`return entity`)
+- Controller 레이어에 `@Transactional` 추가
+- `application-prod.yaml`에 `ddl-auto: create` 또는 `ddl-auto: create-drop` 설정
+- 예외 처리 없이 외부 API(TourAPI, AI, OAuth) 호출 코드 작성
+
+## 절대 금지 (Git / 파일)
+
+- `.env` 파일, 토큰, 비밀번호가 포함된 파일을 Git에 커밋
+- 명시적 지시 없이 `main` 브랜치에 직접 커밋
+- 명시적 지시 없이 `git push` 실행
+
+## 확인 후 진행 (파괴적 작업)
+
+- DB 스키마 변경 (컬럼 삭제, 타입 변경)
+- 기존 API 응답 구조 변경 (하위 호환성 파괴)
+- 패키지 구조 대규모 이동·리팩터링
