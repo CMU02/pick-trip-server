@@ -36,7 +36,7 @@ public class JwtUtil {
         }
         this.cachedKey = Keys.hmacShaKeyFor(keyBytes);
     }
-/
+
     public String generateAccessToken(JwtUserInfo info) {
         return generateToken(info, TokenType.ACCESS);
     }

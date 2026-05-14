@@ -10,8 +10,6 @@ spring:
           google:
             clientId: ${GOOGLE_CLIENT_ID}
             clientSecret: ${GOOGLE_CLIENT_SECRET}
-          kakao:
-            client-id: ${KAKAO_CLIENT_ID}
 
 
 public-data-portal:
@@ -20,6 +18,10 @@ public-data-portal:
 
 jwt:
   secret-key: ${JWT_SECRET_KEY}
-  access-token-expire-time: 3600000
-  refresh-token-expire-time: 1209600000
+  access-token-expire-time: 3600000   # 1시간 (ms)
+  refresh-token-expire-time: 14       # 14일 (days)
+
+kakao:
+  client-id: ${KAKAO_CLIENT_ID}
+  redirect-uri: ${KAKAO_REDIRECT_URI}
 
