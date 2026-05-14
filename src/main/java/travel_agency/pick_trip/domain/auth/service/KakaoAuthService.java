@@ -11,6 +11,8 @@ import travel_agency.pick_trip.domain.auth.client.KakaoAuthClient;
 import travel_agency.pick_trip.domain.auth.dto.response.KakaoTokenResponse;
 import travel_agency.pick_trip.domain.auth.dto.response.KakaoUserInfoResponse;
 import travel_agency.pick_trip.domain.auth.dto.response.LoginResponse;
+import travel_agency.pick_trip.domain.auth.entity.RefreshToken;
+import travel_agency.pick_trip.domain.auth.repository.RefreshTokenRepository;
 import travel_agency.pick_trip.domain.user.entity.OAuthProvider;
 import travel_agency.pick_trip.domain.user.entity.User;
 import travel_agency.pick_trip.domain.user.repository.UserRepository;
@@ -18,6 +20,8 @@ import travel_agency.pick_trip.gloal.error.ErrorCode;
 import travel_agency.pick_trip.gloal.error.exception.OAuthProviderException;
 import travel_agency.pick_trip.gloal.jwt.JwtUserInfo;
 import travel_agency.pick_trip.gloal.jwt.JwtUtil;
+
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -27,6 +31,7 @@ public class KakaoAuthService {
     private final KakaoAuthClient kakaoAuthClient;
     private final KakaoApiClient kakaoApiClient;
     private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final JwtUtil jwtUtil;
 
     @Value("${kakao.client-id}")
@@ -34,6 +39,9 @@ public class KakaoAuthService {
 
     @Value("${kakao.redirect-uri}")
     private String redirectUri;
+
+    @Value("${jwt.refresh-token-expire-time}")
+    private Long refreshTokenExpireTimeDays;
 
     @Transactional
     public LoginResponse login(String authorizationCode) {
@@ -62,10 +70,17 @@ public class KakaoAuthService {
                 user.getRole().name()
         );
 
-        return new LoginResponse(
-                jwtUtil.generateAccessToken(jwtUserInfo),
-                jwtUtil.generateRefreshToken(jwtUserInfo)
-        );
+        String newRefreshToken = jwtUtil.generateRefreshToken(jwtUserInfo);
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(refreshTokenExpireTimeDays);
+
+        // 재로그인 시 기존 리프레시 토큰을 갱신하고, 최초 로그인 시 새로 저장한다.
+        refreshTokenRepository.findById(user.getUid())
+                .ifPresentOrElse(
+                        existing -> existing.rotate(newRefreshToken, expiresAt),
+                        () -> refreshTokenRepository.save(RefreshToken.of(user.getUid(), newRefreshToken, expiresAt))
+                );
+
+        return new LoginResponse(jwtUtil.generateAccessToken(jwtUserInfo), newRefreshToken);
     }
 
     private KakaoTokenResponse fetchKakaoToken(String authorizationCode) {
