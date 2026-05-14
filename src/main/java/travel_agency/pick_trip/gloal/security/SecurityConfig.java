@@ -11,6 +11,10 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.context.SecurityContextHolderFilter;
+import travel_agency.pick_trip.domain.auth.oauth2.CustomOAuth2UserService;
+import travel_agency.pick_trip.domain.auth.oauth2.HttpCookieOAuth2AuthorizationRequestRepository;
+import travel_agency.pick_trip.domain.auth.oauth2.OAuth2AuthenticationFailureHandler;
+import travel_agency.pick_trip.domain.auth.oauth2.OAuth2AuthenticationSuccessHandler;
 import travel_agency.pick_trip.gloal.filter.JwtFilter;
 import travel_agency.pick_trip.gloal.filter.TraceIdFilter;
 
@@ -21,6 +25,10 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
     private final TraceIdFilter traceIdFilter;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
+    private final HttpCookieOAuth2AuthorizationRequestRepository cookieAuthorizationRequestRepository;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -42,6 +50,13 @@ public class SecurityConfig {
                         .anyRequest().permitAll()
 
                 )
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationEndpoint(endpoint -> endpoint
+                                .authorizationRequestRepository(cookieAuthorizationRequestRepository))
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService))
+                        .successHandler(oAuth2AuthenticationSuccessHandler)
+                        .failureHandler(oAuth2AuthenticationFailureHandler))
                 .addFilterBefore(traceIdFilter, SecurityContextHolderFilter.class)
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
