@@ -1,0 +1,42 @@
+spring:
+  application:
+    name: PickTrip
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${DB_URL:localhost}:${DB_PORT:3306}/${DB_SCHEMA:picktrip_test}?serverTimezone=Asia/Seoul
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:picktrip_test}
+  jpa:
+    hibernate:
+      ddl-auto: create
+    properties:
+      hibernate:
+        show_sql: false
+        format_sql: false
+        dialect: org.hibernate.dialect.MySQLDialect
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            clientId: ci-dummy-google-client-id
+            clientSecret: ci-dummy-google-client-secret
+
+public-data-portal:
+  key:
+    encode: ${PUBLIC_DATA_PORTAL_KEY:ci-dummy-key}
+
+jwt:
+  secret-key: ${JWT_SECRET_KEY:ci-dummy-secret-key-must-be-long-enough-for-hmac}
+  access-token-expire-time: 3600000
+  refresh-token-expire-time: 14
+
+kakao:
+  client-id: ci-dummy-kakao-client-id
+  redirect-uri: http://localhost:8080/callback
+
+app:
+  cors:
+    allowed-origins: http://localhost:3000
+  oauth2:
+    redirect-uri: http://localhost:3000/auth/callback
