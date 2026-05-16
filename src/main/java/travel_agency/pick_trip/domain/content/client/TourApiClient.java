@@ -35,11 +35,7 @@ public interface TourApiClient {
     );
 
     @GetMapping("/detailCommon2")
-    TourApiDetailCommonResponse getDetailCommon(
-            @RequestParam String contentId,
-            @RequestParam String defaultYN,
-            @RequestParam String overviewYN
-    );
+    TourApiDetailCommonResponse getDetailCommon(@RequestParam String contentId);
 
     @GetMapping("/detailIntro2")
     TourApiDetailIntroResponse getDetailIntro(
@@ -48,9 +44,5 @@ public interface TourApiClient {
     );
 
     @GetMapping("/detailImage2")
-    TourApiDetailImageResponse getDetailImage(
-            @RequestParam String contentId,
-            @RequestParam String imageYN,
-            @RequestParam String subImageYN
-    );
+    TourApiDetailImageResponse getDetailImage(@RequestParam String contentId);
 }
