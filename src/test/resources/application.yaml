@@ -40,3 +40,7 @@ app:
     allowed-origins: http://localhost:3000
   oauth2:
     redirect-uri: http://localhost:3000/auth/callback
+
+tour-api:
+  base-url: http://localhost
+  service-key: ci-dummy-tour-api-key

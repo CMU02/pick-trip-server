@@ -1,0 +1,38 @@
+package travel_agency.pick_trip.domain.content.controller;
+
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import travel_agency.pick_trip.domain.content.dto.request.ContentListRequest;
+import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
+import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
+import travel_agency.pick_trip.domain.content.service.ContentService;
+
+@RestController
+@RequestMapping("/api/v1/contents")
+@RequiredArgsConstructor
+public class ContentController {
+
+    private final ContentService contentService;
+
+    @GetMapping
+    public ResponseEntity<ContentListResponse> getContents(
+            @RequestParam String region,
+            @RequestParam(required = false) String contentTypeId,
+            @RequestParam(required = false) String keyword,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        ContentListRequest request = new ContentListRequest(region, contentTypeId, keyword, page, size);
+        return ResponseEntity.ok(contentService.getContents(request));
+    }
+
+    @GetMapping("/{contentId}")
+    public ResponseEntity<ContentDetailResponse> getContentDetail(@PathVariable String contentId) {
+        return ResponseEntity.ok(contentService.getContentDetail(contentId));
+    }
+}
