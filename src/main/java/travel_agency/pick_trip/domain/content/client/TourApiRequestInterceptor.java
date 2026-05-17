@@ -2,14 +2,14 @@ package travel_agency.pick_trip.domain.content.client;
 
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
 
-@Component
 public class TourApiRequestInterceptor implements RequestInterceptor {
 
-    @Value("${tour-api.service-key}")
-    private String serviceKey;
+    private final String serviceKey;
+
+    public TourApiRequestInterceptor(String serviceKey) {
+        this.serviceKey = serviceKey;
+    }
 
     @Override
     public void apply(RequestTemplate template) {

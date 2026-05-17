@@ -2,11 +2,19 @@ package travel_agency.pick_trip.domain.content.client;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import feign.RequestInterceptor;
 import feign.codec.Decoder;
 import feign.jackson.JacksonDecoder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 
 public class TourApiFeignConfig {
+
+    @Bean
+    public RequestInterceptor tourApiRequestInterceptor(
+            @Value("${tour-api.service-key}") String serviceKey) {
+        return new TourApiRequestInterceptor(serviceKey);
+    }
 
     @Bean
     public Decoder tourApiDecoder() {
