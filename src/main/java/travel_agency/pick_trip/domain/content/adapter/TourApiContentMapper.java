@@ -42,11 +42,12 @@ public class TourApiContentMapper {
         TourApiDetailCommonResponse.Item commonItem = extractFirst(common);
         TourApiDetailIntroResponse.Item introItem = extractFirst(intro);
         List<ContentDetailResponse.ImageItem> images = extractImages(image);
+        int contentTypeId = parseIntOrZero(commonItem.contenttypeid());
 
         return new ContentDetailResponse(
                 commonItem.contentid(),
                 commonItem.title(),
-                parseIntOrZero(commonItem.contenttypeid()),
+                contentTypeId,
                 buildAddress(commonItem.addr1(), commonItem.addr2()),
                 commonItem.tel(),
                 commonItem.homepage(),
@@ -60,6 +61,9 @@ public class TourApiContentMapper {
                 introItem != null ? introItem.usefee() : null,
                 introItem != null ? introItem.chkbabycarriage() : null,
                 introItem != null ? introItem.chkpet() : null,
+                ContentTypeCategory.stayDurationFor(contentTypeId),
+                null,
+                "TourAPI",
                 images
         );
     }

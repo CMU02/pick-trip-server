@@ -18,6 +18,9 @@ public record ContentDetailResponse(
         String useFee,
         String chkBabyCarriage,
         String chkPet,
+        String stayDuration,
+        Boolean reservationRequired,
+        String dataSource,
         List<ImageItem> images
 ) {
     public record ImageItem(String imageUrl, String title) {}

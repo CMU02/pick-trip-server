@@ -64,7 +64,8 @@ class ContentControllerTest {
             ContentDetailResponse expected = new ContentDetailResponse(
                     "2741429", "쌍계사", 12, "경상남도 하동군", "055-883-1901", "http://ssanggyesa.net",
                     35.27, 127.58, "한국의 4대 총림", "03:00~18:00", "연중무휴",
-                    "가능", "성인 3,000원", "불가", "불가", List.of()
+                    "가능", "성인 3,000원", "불가", "불가",
+                    "약 2시간", null, "TourAPI", List.of()
             );
             given(contentService.getContentDetail("2741429")).willReturn(expected);
 

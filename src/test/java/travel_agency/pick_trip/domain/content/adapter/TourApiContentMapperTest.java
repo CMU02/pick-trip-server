@@ -144,6 +144,9 @@ class TourApiContentMapperTest {
             assertThat(result.summary()).isEqualTo("한국의 4대 총림");
             assertThat(result.useTime()).isEqualTo("03:00~18:00");
             assertThat(result.parking()).isEqualTo("가능");
+            assertThat(result.stayDuration()).isEqualTo("약 2시간"); // contentTypeId=12 (관광지)
+            assertThat(result.reservationRequired()).isNull();
+            assertThat(result.dataSource()).isEqualTo("TourAPI");
             assertThat(result.images()).hasSize(1);
             assertThat(result.images().get(0).imageUrl()).isEqualTo("https://img1.jpg");
         }
