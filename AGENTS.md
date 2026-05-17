@@ -37,11 +37,7 @@ PickTrip 서버는 경상도 소도시(하동, 영주, 예천) 여행 일정 생
 | MVP 범위              | `.agents/docs/mvp-scope.md`                                   |
 | API 엔드포인트 초안        | `.agents/docs/api-endpoints.md`                               |
 | 도메인 모델              | `.agents/docs/domain-model.md`                                |
-| AI 일정 생성 연동         | `.agents/docs/ai-integration.md`                              |
-| TourAPI 수집·동기화      | `.agents/docs/tour-api-sync.md`                               |
 | 지역별 콘텐츠 방향          | `.agents/docs/content-direction-by-region.md`                 |
-| 예외 처리 흐름            | `.agents/docs/error-handling-flow.md`                         |
-| 정보 보안 보완 방안         | `.agents/docs/measures-to-enhance-information-security.md`    |
 | Gradle 사용 가이드       | `.agents/docs/package-manager-guide.md`                       |
 
 # Convention
@@ -53,6 +49,15 @@ PickTrip 서버는 경상도 소도시(하동, 영주, 예천) 여행 일정 생
 | TraceId 규칙 | `.agents/rules/trace-id.md`        |
 | 깃 규칙       | `.agents/rules/git-convention.md`  |
 | 브랜치 포커스    | `.agents/rules/branch-focus.md`    |
+
+# Skills
+
+| title              | path                                                      |
+|--------------------|-----------------------------------------------------------|
+| 예외 처리 패턴          | `.agents/skills/picktrip-error-handling/SKILL.md`         |
+| 보안 체크리스트          | `.agents/skills/picktrip-security-checklist/SKILL.md`     |
+| AI 일정 생성 연동        | `.agents/skills/picktrip-ai-integration/SKILL.md`         |
+| TourAPI 수집·동기화     | `.agents/skills/picktrip-tour-api-sync/SKILL.md`          |
 
 # Quick Start
 
@@ -127,7 +132,7 @@ src/main/java/travel_agency/pick_trip
 }
 ```
 
-에러 코드 목록과 HTTP 상태 매핑은 `.agents/docs/error-handling-flow.md`를 참고한다.
+에러 코드 목록과 HTTP 상태 매핑은 `.agents/skills/picktrip-error-handling/SKILL.md`를 참고한다.
 
 # Known Gotchas
 
@@ -142,7 +147,7 @@ src/main/java/travel_agency/pick_trip
 ## JPA / DB
 
 - `FetchType.EAGER`는 N+1 문제를 유발한다. 기본은 `LAZY`이며, 필요 시 fetch join으로 해결한다.
-- 개발 환경 Docker Compose DB 포트는 `3307`이다 (로컬 MySQL 충돌 회피).
+- 개발 환경 Docker Compose DB 포트는 `3306`이다.
 - `ddl-auto` 설정은 `validate` 또는 `none`만 사용한다. `create`, `create-drop`은 운영 데이터를 삭제한다.
 
 ## Lombok
