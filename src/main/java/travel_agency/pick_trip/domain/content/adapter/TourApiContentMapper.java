@@ -8,6 +8,8 @@ import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentSummaryResponse;
+import travel_agency.pick_trip.gloal.error.ErrorCode;
+import travel_agency.pick_trip.gloal.error.exception.ContentException;
 
 import java.util.Collections;
 import java.util.List;
@@ -23,7 +25,7 @@ public class TourApiContentMapper {
                 .map(TourApiListResponse.Items::item)
                 .orElse(Collections.emptyList())
                 .stream()
-                .map(ContentSummaryResponse::from)
+                .map(this::toSummaryResponse)
                 .toList();
 
         int totalCount = Optional.ofNullable(raw.response())
@@ -40,6 +42,9 @@ public class TourApiContentMapper {
             TourApiDetailImageResponse image
     ) {
         TourApiDetailCommonResponse.Item commonItem = extractFirst(common);
+        if (commonItem == null) {
+            throw new ContentException(ErrorCode.CONTENT_NOT_FOUND);
+        }
         TourApiDetailIntroResponse.Item introItem = extractFirst(intro);
         List<ContentDetailResponse.ImageItem> images = extractImages(image);
         int contentTypeId = parseIntOrZero(commonItem.contenttypeid());
@@ -65,6 +70,18 @@ public class TourApiContentMapper {
                 null,
                 "TourAPI",
                 images
+        );
+    }
+
+    private ContentSummaryResponse toSummaryResponse(TourApiListResponse.Item item) {
+        return new ContentSummaryResponse(
+                item.contentid(),
+                item.title(),
+                parseIntOrZero(item.contenttypeid()),
+                buildAddress(item.addr1(), item.addr2()),
+                item.firstimage(),
+                parseDouble(item.mapy()),
+                parseDouble(item.mapx())
         );
     }
 
