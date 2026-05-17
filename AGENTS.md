@@ -58,6 +58,7 @@ PickTrip 서버는 경상도 소도시(하동, 영주, 예천) 여행 일정 생
 | 보안 체크리스트          | `.agents/skills/picktrip-security-checklist/SKILL.md`     |
 | AI 일정 생성 연동        | `.agents/skills/picktrip-ai-integration/SKILL.md`         |
 | TourAPI 수집·동기화     | `.agents/skills/picktrip-tour-api-sync/SKILL.md`          |
+| Notion API 문서 업데이트  | `.agents/skills/picktrip-notion-api-docs/SKILL.md`        |
 
 # Quick Start
 
