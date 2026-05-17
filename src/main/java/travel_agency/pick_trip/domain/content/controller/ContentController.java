@@ -1,7 +1,9 @@
 package travel_agency.pick_trip.domain.content.controller;
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -13,6 +15,7 @@ import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse
 import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
 import travel_agency.pick_trip.domain.content.service.ContentService;
 
+@Validated
 @RestController
 @RequestMapping("/api/v1/contents")
 @RequiredArgsConstructor
@@ -22,7 +25,7 @@ public class ContentController {
 
     @GetMapping
     public ResponseEntity<ContentListResponse> getContents(
-            @RequestParam String region,
+            @RequestParam @NotBlank String region,
             @RequestParam(required = false) String contentTypeId,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) CompanionType companion,

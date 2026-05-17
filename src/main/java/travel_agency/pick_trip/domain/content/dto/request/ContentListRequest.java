@@ -1,7 +1,9 @@
 package travel_agency.pick_trip.domain.content.dto.request;
 
+import jakarta.validation.constraints.NotBlank;
+
 public record ContentListRequest(
-        String region,
+        @NotBlank String region,
         String contentTypeId,
         String keyword,
         CompanionType companion,
