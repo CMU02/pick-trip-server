@@ -43,7 +43,7 @@ class ContentControllerTest {
 
             // when
             ResponseEntity<ContentListResponse> result = contentController.getContents(
-                    "HADONG", null, null, 0, 20
+                    "HADONG", null, null, null, null, 0, 20
             );
 
             // then

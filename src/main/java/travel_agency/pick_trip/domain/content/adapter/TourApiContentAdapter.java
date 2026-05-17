@@ -23,8 +23,10 @@ public class TourApiContentAdapter {
     private final TourApiContentMapper mapper;
 
     public ContentListResponse fetchList(ContentListRequest request, Region region) {
-        // TourAPI pageNo는 1-indexed
         int pageNo = request.page() + 1;
+        String effectiveContentTypeId = ContentTypeCategory.resolveContentTypeId(
+                request.contentTypeId(), request.indoorOnly(), request.companion()
+        );
         try {
             TourApiListResponse raw;
             if (request.keyword() != null && !request.keyword().isBlank()) {
@@ -32,7 +34,7 @@ public class TourApiContentAdapter {
                         request.keyword(),
                         region.getAreaCode(),
                         region.getSigunguCode(),
-                        request.contentTypeId(),
+                        effectiveContentTypeId,
                         pageNo,
                         request.size()
                 );
@@ -40,7 +42,7 @@ public class TourApiContentAdapter {
                 raw = tourApiClient.getAreaBasedList(
                         region.getAreaCode(),
                         region.getSigunguCode(),
-                        request.contentTypeId(),
+                        effectiveContentTypeId,
                         pageNo,
                         request.size()
                 );

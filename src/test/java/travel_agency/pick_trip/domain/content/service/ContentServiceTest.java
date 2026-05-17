@@ -37,7 +37,7 @@ class ContentServiceTest {
         @DisplayName("유효한 region으로 요청하면 ContentListResponse를 반환한다")
         void validRegion_returnsContentListResponse() {
             // given
-            ContentListRequest request = new ContentListRequest("HADONG", null, null, 0, 20);
+            ContentListRequest request = new ContentListRequest("HADONG", null, null, null, null, 0, 20);
             ContentListResponse expected = new ContentListResponse(1, 0, 20, List.of(
                     new ContentSummaryResponse("123", "쌍계사", 12, "경상남도 하동군", "https://img.jpg", 35.27, 127.58)
             ));
@@ -55,7 +55,7 @@ class ContentServiceTest {
         @DisplayName("지원하지 않는 region이면 CONTENT_INVALID_REGION 예외를 던진다")
         void invalidRegion_throwsContentInvalidRegion() {
             // given
-            ContentListRequest request = new ContentListRequest("INVALID", null, null, 0, 20);
+            ContentListRequest request = new ContentListRequest("INVALID", null, null, null, null, 0, 20);
 
             // when & then
             assertThatThrownBy(() -> contentService.getContents(request))

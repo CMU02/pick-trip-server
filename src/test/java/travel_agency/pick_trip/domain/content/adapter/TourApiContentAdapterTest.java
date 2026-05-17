@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
+import travel_agency.pick_trip.domain.content.dto.request.CompanionType;
 import travel_agency.pick_trip.domain.content.dto.request.ContentListRequest;
 import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
 import travel_agency.pick_trip.domain.region.Region;
@@ -41,7 +42,7 @@ class TourApiContentAdapterTest {
         @DisplayName("keyword가 없으면 areaBasedList2를 호출한다")
         void noKeyword_callsAreaBasedList() {
             // given
-            ContentListRequest request = new ContentListRequest("HADONG", null, null, 0, 20);
+            ContentListRequest request = new ContentListRequest("HADONG", null, null, null, null, 0, 20);
             Region region = Region.HADONG;
             TourApiListResponse rawResponse = emptyListResponse();
             ContentListResponse expected = new ContentListResponse(0, 0, 20, List.of());
@@ -71,7 +72,7 @@ class TourApiContentAdapterTest {
         @DisplayName("keyword가 있으면 searchKeyword2를 호출한다")
         void withKeyword_callsSearchKeyword() {
             // given
-            ContentListRequest request = new ContentListRequest("HADONG", null, "쌍계사", 0, 20);
+            ContentListRequest request = new ContentListRequest("HADONG", null, "쌍계사", null, null, 0, 20);
             Region region = Region.HADONG;
             TourApiListResponse rawResponse = emptyListResponse();
             ContentListResponse expected = new ContentListResponse(1, 0, 20, List.of());
@@ -81,6 +82,111 @@ class TourApiContentAdapterTest {
                     eq(region.getAreaCode()),
                     eq(region.getSigunguCode()),
                     isNull(),
+                    eq(1),
+                    eq(20)
+            )).willReturn(rawResponse);
+            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+
+            // when
+            ContentListResponse result = adapter.fetchList(request, region);
+
+            // then
+            assertThat(result).isEqualTo(expected);
+        }
+    }
+
+    @Nested
+    @DisplayName("fetchList - 필터 변환")
+    class FetchListWithFilter {
+
+        @Test
+        @DisplayName("indoorOnly=true이면 contentTypeId=14로 areaBasedList2를 호출한다")
+        void indoorOnly_true_callsWithCultureContentTypeId() {
+            // given
+            ContentListRequest request = new ContentListRequest("HADONG", null, null, null, true, 0, 20);
+            Region region = Region.HADONG;
+            TourApiListResponse rawResponse = emptyListResponse();
+            ContentListResponse expected = new ContentListResponse(0, 0, 20, List.of());
+
+            given(tourApiClient.getAreaBasedList(
+                    eq(region.getAreaCode()),
+                    eq(region.getSigunguCode()),
+                    eq("14"),
+                    eq(1),
+                    eq(20)
+            )).willReturn(rawResponse);
+            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+
+            // when
+            ContentListResponse result = adapter.fetchList(request, region);
+
+            // then
+            assertThat(result).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("indoorOnly=false이면 contentTypeId=12로 areaBasedList2를 호출한다")
+        void indoorOnly_false_callsWithTourismContentTypeId() {
+            // given
+            ContentListRequest request = new ContentListRequest("HADONG", null, null, null, false, 0, 20);
+            Region region = Region.HADONG;
+            TourApiListResponse rawResponse = emptyListResponse();
+            ContentListResponse expected = new ContentListResponse(0, 0, 20, List.of());
+
+            given(tourApiClient.getAreaBasedList(
+                    eq(region.getAreaCode()),
+                    eq(region.getSigunguCode()),
+                    eq("12"),
+                    eq(1),
+                    eq(20)
+            )).willReturn(rawResponse);
+            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+
+            // when
+            ContentListResponse result = adapter.fetchList(request, region);
+
+            // then
+            assertThat(result).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("companion=FAMILY이면 contentTypeId=14로 areaBasedList2를 호출한다")
+        void companionFamily_callsWithCultureContentTypeId() {
+            // given
+            ContentListRequest request = new ContentListRequest("HADONG", null, null, CompanionType.FAMILY, null, 0, 20);
+            Region region = Region.HADONG;
+            TourApiListResponse rawResponse = emptyListResponse();
+            ContentListResponse expected = new ContentListResponse(0, 0, 20, List.of());
+
+            given(tourApiClient.getAreaBasedList(
+                    eq(region.getAreaCode()),
+                    eq(region.getSigunguCode()),
+                    eq("14"),
+                    eq(1),
+                    eq(20)
+            )).willReturn(rawResponse);
+            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+
+            // when
+            ContentListResponse result = adapter.fetchList(request, region);
+
+            // then
+            assertThat(result).isEqualTo(expected);
+        }
+
+        @Test
+        @DisplayName("explicit contentTypeId가 있으면 indoorOnly와 companion을 무시한다")
+        void explicitContentTypeId_ignoresFilters() {
+            // given
+            ContentListRequest request = new ContentListRequest("HADONG", "28", null, CompanionType.FAMILY, true, 0, 20);
+            Region region = Region.HADONG;
+            TourApiListResponse rawResponse = emptyListResponse();
+            ContentListResponse expected = new ContentListResponse(0, 0, 20, List.of());
+
+            given(tourApiClient.getAreaBasedList(
+                    eq(region.getAreaCode()),
+                    eq(region.getSigunguCode()),
+                    eq("28"),
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);

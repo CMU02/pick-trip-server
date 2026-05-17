@@ -4,6 +4,8 @@ public record ContentListRequest(
         String region,
         String contentTypeId,
         String keyword,
+        CompanionType companion,
+        Boolean indoorOnly,
         int page,
         int size
 ) {
