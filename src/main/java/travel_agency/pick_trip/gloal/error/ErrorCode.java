@@ -31,6 +31,10 @@ public enum ErrorCode {
     ITINERARY_INVALID_CONTENT(HttpStatus.BAD_REQUEST, "유효하지 않은 콘텐츠가 포함되어 있습니다."),
     ITINERARY_SAVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "저장에 실패했습니다. 다시 시도해주세요."),
 
+    // Basket
+    BASKET_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "바구니 항목을 찾을 수 없습니다."),
+    BASKET_ITEM_DUPLICATE(HttpStatus.CONFLICT, "이미 바구니에 담은 콘텐츠입니다."),
+
     // Share
     SHARE_ITINERARY_NOT_FOUND(HttpStatus.NOT_FOUND, "공유된 일정을 찾을 수 없습니다."),
     SHARE_FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),

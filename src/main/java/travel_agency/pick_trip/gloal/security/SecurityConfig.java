@@ -25,6 +25,7 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
     private final TraceIdFilter traceIdFilter;
+    private final RestAuthenticationEntryPoint restAuthenticationEntryPoint;
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
@@ -45,11 +46,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/contents/**").permitAll()
                         // Share - 공유 토큰 조회 인증 불필요
                         .requestMatchers(HttpMethod.GET, "/api/v1/share/**").permitAll()
+                        // Basket - 여행 바구니는 로그인 필요
+                        .requestMatchers("/api/v1/baskets/**").authenticated()
                         // 나머지 모든 요청은 인증 필요
                         // TODO: 현재 개발 중이기 때문에 잠시 요청은 인증 불필요, 추후 authenticated() 설정
                         .anyRequest().permitAll()
 
                 )
+                .exceptionHandling(handling -> handling
+                        .authenticationEntryPoint(restAuthenticationEntryPoint))
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(endpoint -> endpoint
                                 .authorizationRequestRepository(cookieAuthorizationRequestRepository))
