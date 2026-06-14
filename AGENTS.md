@@ -60,6 +60,28 @@ PickTrip 서버는 경상도 소도시(하동, 영주, 예천) 여행 일정 생
 | TourAPI 수집·동기화     | `.agents/skills/picktrip-tour-api-sync/SKILL.md`          |
 | Notion API 문서 업데이트  | `.agents/skills/picktrip-notion-api-docs/SKILL.md`        |
 
+# GitHub Workflow
+
+## 이슈 생성
+
+사용자가 이슈 생성을 요청하면, `.github/ISSUE_TEMPLATE/` 의 템플릿을 확인하고 작업 성격에 맞는 템플릿을 골라 그 형식(frontmatter의 `title` 접두사·`labels` 포함)에 맞춰 이슈를 생성한다.
+
+| 템플릿                   | 용도                              | title 접두사     | label     |
+|-----------------------|---------------------------------|---------------|-----------|
+| `bug_report.md`       | 버그 제보                           | `[Bug] `      | `bug`     |
+| `feature_request.md`  | 새로운 기능 제안                       | `[Feature] `  | `feature` |
+| `task.md`             | 구현·개선·조사 등 구체적 작업               | `[Task] `     | `task`    |
+| `chore.md`            | 설정·의존성·문서 정리 등 유지보수            | `[Chore] `    | `chore`   |
+
+- 어떤 템플릿이 적절한지 모호하면 사용자에게 확인한다.
+- 본문은 선택한 템플릿의 섹션 구조(예: 버그의 `재현 방법`, 작업의 `완료 조건`)를 그대로 따른다.
+
+## PR 생성
+
+사용자가 PR 생성을 요청하면, `.github/pull_request_template.md` 를 확인하고 해당 템플릿 형식(`작업 내용`, `관련 이슈`, `테스트 플랜` 섹션)에 맞춰 PR을 작성한다.
+
+- 관련 이슈가 있으면 `관련 이슈` 섹션에 `Closes #<번호>` 로 연결한다.
+
 # Quick Start
 
 ## 로컬 실행 (Windows)

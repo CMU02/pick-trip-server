@@ -4,9 +4,10 @@
 
 ## 규칙
 
-- 현재 브랜치명에서 작업 범위를 파악한다.
-  - 예: `feat/user-profile-api` → 허용 범위: 사용자 프로필 API 관련 작업
-  - 예: `fix/oauth-token-expiry` → 허용 범위: OAuth 토큰 만료 버그 수정
+- 현재 브랜치명의 `type`과 연관된 이슈 번호로 작업 범위를 파악한다.
+  - 브랜치는 `<type>/<issue_number>` 형식이므로, 범위는 해당 이슈(`#<issue_number>`)의 내용을 기준으로 한다.
+  - 예: `feat/42` → 이슈 #42에 정의된 기능 범위
+  - 예: `fix/57` → 이슈 #57에 정의된 버그 수정 범위
 - 사용자가 현재 브랜치 범위를 벗어나는 기능 개발을 요청하면:
   1. 요청이 현재 브랜치 범위를 벗어남을 명확히 알린다.
   2. 작업을 진행하지 않는다.
@@ -20,8 +21,10 @@
 
 ## 권장 브랜치명
 
-- 기능 추가: `feat/<feature-name>`
-- 버그 수정: `fix/<issue-name>`
-- 리팩터링: `refactor/<target-name>`
-- 문서 변경: `docs/<topic>`
-- 환경 작업: `chore/<topic>`
+브랜치는 `<type>/<issue_number>` 형식으로 만든다. 자세한 규칙은 `git-convention.md`의 Branch Naming Convention을 따른다.
+
+- 기능 추가: `feat/<issue_number>` (예: `feat/42`)
+- 버그 수정: `fix/<issue_number>` (예: `fix/57`)
+- 리팩터링: `refactor/<issue_number>` (예: `refactor/13`)
+- 문서 변경: `docs/<issue_number>` (예: `docs/9`)
+- 환경 작업: `chore/<issue_number>` (예: `chore/24`)

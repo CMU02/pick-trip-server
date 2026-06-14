@@ -46,19 +46,19 @@ chore: MySQL Docker Compose 설정 추가
 
 ## Branch Naming Convention
 
-- 기능 추가: `feat/<feature-name>`
-  - 예: `feat/oauth-login`
-- 버그 수정: `fix/<issue-name>`
-  - 예: `fix/oauth-token-expiry`
-- 리팩터링: `refactor/<target-name>`
-  - 예: `refactor/itinerary-service`
-- 문서 변경: `docs/<topic>`
-  - 예: `docs/spring-agent-rules`
-- 환경 작업: `chore/<topic>`
-  - 예: `chore/mysql-compose`
-- 긴급 수정: `hotfix/<issue-name>`
+- 브랜치는 `<type>/<issue_number>` 형식으로 만든다.
+  - `type`은 위 [Commit Type](#commit-type)을 따른다 (`feat`, `fix`, `refactor`, `docs`, `chore`, `hotfix` 등).
+  - `issue_number`는 해당 작업과 연관된 GitHub 이슈 번호다.
+- 예시
+  - 기능 추가: `feat/42`
+  - 버그 수정: `fix/57`
+  - 리팩터링: `refactor/13`
+  - 문서 변경: `docs/9`
+  - 환경 작업: `chore/24`
+  - 긴급 수정: `hotfix/61`
+- 연관된 이슈가 없으면 먼저 이슈를 생성한 뒤 그 번호로 브랜치를 만든다.
 
-브랜치명은 소문자와 하이픈을 사용한다.
+`type`은 소문자를 사용한다.
 
 ## Pull Request Guidelines
 

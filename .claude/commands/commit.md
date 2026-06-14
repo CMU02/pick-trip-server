@@ -44,6 +44,7 @@ model: claude-haiku-4-5
 - 제목 끝에 마침표를 붙이지 않습니다.
 - 민감한 파일(.env, credentials 등)은 절대 커밋하지 않습니다.
 - `git add [관련 파일]`로 파일을 선택적으로 스테이징합니다.
+- 브랜치는 `<type>/<issue_number>` 형식이므로, 현재 브랜치명(`git rev-parse --abbrev-ref HEAD`)에서 이슈 번호를 파악해 푸터에 `#<issue_number>`로 참조합니다.
 
 **예시:**
 ```
