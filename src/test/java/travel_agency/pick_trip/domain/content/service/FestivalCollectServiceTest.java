@@ -3,6 +3,7 @@ package travel_agency.pick_trip.domain.content.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiFestivalResponse;
 import travel_agency.pick_trip.domain.content.entity.TravelContent;
@@ -29,6 +32,7 @@ class FestivalCollectServiceTest {
 
     @Mock private TourApiClient tourApiClient;
     @Mock private TravelContentRepository travelContentRepository;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private FestivalCollectService festivalCollectService;
 
@@ -39,7 +43,10 @@ class FestivalCollectServiceTest {
     @BeforeEach
     void setUp() {
         festivalCollectService = new FestivalCollectService(
-                tourApiClient, travelContentRepository, new ContentCollectMapper());
+                tourApiClient, travelContentRepository, new ContentCollectMapper(), transactionTemplate);
+        // execute 는 콜백(축제 upsert)을 즉시 실행하도록 스텁한다.
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(inv ->
+                inv.getArgument(0, TransactionCallback.class).doInTransaction(null));
     }
 
     private TourApiFestivalResponse festivalResponse(TourApiFestivalResponse.Item... items) {

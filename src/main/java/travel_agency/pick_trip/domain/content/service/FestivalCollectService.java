@@ -1,10 +1,11 @@
 package travel_agency.pick_trip.domain.content.service;
 
 import feign.FeignException;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiFestivalResponse;
 import travel_agency.pick_trip.domain.content.entity.ContentDetail;
@@ -19,6 +20,8 @@ import travel_agency.pick_trip.domain.region.Region;
  *
  * <p>저장한 {@code eventStartDate}/{@code eventEndDate}는 AI 일정 생성의 제약 조건으로 사용된다.
  * 호출 실패 시 예외를 전파하지 않고 기존 데이터를 유지하며 로그를 남긴다.
+ *
+ * <p>외부 조회는 트랜잭션 밖에서 수행하고, upsert(save)만 짧은 트랜잭션으로 감싼다.
  */
 @Slf4j
 @Service
@@ -31,12 +34,12 @@ public class FestivalCollectService {
     private final TourApiClient tourApiClient;
     private final TravelContentRepository travelContentRepository;
     private final ContentCollectMapper mapper;
+    private final TransactionTemplate transactionTemplate;
 
     /**
      * 지역의 축제를 수집한다. {@code eventStartDate}(yyyyMMdd) 이후 진행 중·예정 축제가 대상.
      * 반환값은 적재 건수.
      */
-    @Transactional
     public int collectFestivals(Region region, String eventStartDate) {
         TourApiFestivalResponse response;
         try {
@@ -52,14 +55,19 @@ public class FestivalCollectService {
             return 0;
         }
 
-        int count = 0;
-        for (TourApiFestivalResponse.Item item : response.festivals()) {
-            if (upsertFestival(region, item)) {
-                count++;
+        List<TourApiFestivalResponse.Item> festivals = response.festivals();
+        Integer count = transactionTemplate.execute(status -> {
+            int c = 0;
+            for (TourApiFestivalResponse.Item item : festivals) {
+                if (upsertFestival(region, item)) {
+                    c++;
+                }
             }
-        }
-        log.info("[수집] {} 지역 축제 {}건 적재", region, count);
-        return count;
+            return c;
+        });
+        int result = count != null ? count : 0;
+        log.info("[수집] {} 지역 축제 {}건 적재", region, result);
+        return result;
     }
 
     private boolean upsertFestival(Region region, TourApiFestivalResponse.Item item) {
