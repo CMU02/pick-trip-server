@@ -46,6 +46,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/contents/**").permitAll()
                         // Share - 공유 토큰 조회 인증 불필요
                         .requestMatchers(HttpMethod.GET, "/api/v1/share/**").permitAll()
+                        // API 문서 / MCP 서버 - 인증 불필요 (read-only 문서 제공)
+                        .requestMatchers("/sse", "/mcp/**", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         // Basket - 여행 바구니는 로그인 필요
                         .requestMatchers("/api/v1/baskets/**").authenticated()
                         // Itinerary - 일정 생성·저장·조회·수정·공유 생성은 로그인 필요

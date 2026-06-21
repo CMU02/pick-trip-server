@@ -57,6 +57,12 @@ dependencies {
     // Source: https://mvnrepository.com/artifact/org.springframework.boot/spring-boot-starter-aop
     implementation 'org.springframework.boot:spring-boot-starter-aop:4.0.0-M2'
     implementation 'io.github.openfeign:feign-jackson'
+
+    // API 문서: OpenAPI 3 생성 (MCP 문서 서버의 스펙 원천)
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.0'
+
+    // MCP 서버 (SSE/HTTP, Spring MVC) — 프론트 팀원 AI 클라이언트에 read-only API 문서 제공
+    implementation 'org.springframework.ai:spring-ai-starter-mcp-server-webmvc'
 }
 dependencyManagement {
     imports {

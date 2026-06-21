@@ -24,3 +24,15 @@ spring:
       api-key: ${OPENAI_API_KEY:}
       chat:
           model: ${OPENAI_MODEL:gpt-5.1}
+    # MCP 서버 (SSE/HTTP) — 프론트 팀원 AI 클라이언트에 read-only API 문서 제공
+    mcp:
+      server:
+        name: picktrip-api-docs
+        version: 1.0.0
+        type: SYNC
+        instructions: >-
+          PickTrip 백엔드 REST API 문서를 read-only 로 제공합니다.
+          listEndpoints / getEndpoint / searchEndpoints / getErrorContract 도구로
+          엔드포인트 목록·상세 스키마·공통 에러 계약을 조회하세요.
+        capabilities:
+          tool: true
