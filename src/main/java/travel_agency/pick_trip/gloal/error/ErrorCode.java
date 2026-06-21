@@ -25,6 +25,7 @@ public enum ErrorCode {
     CONTENT_PROVIDER_FAILED(HttpStatus.BAD_GATEWAY, "콘텐츠를 불러오지 못했습니다. 다시 시도해주세요."),
 
     // Itinerary
+    ITINERARY_NOT_FOUND(HttpStatus.NOT_FOUND, "일정을 찾을 수 없습니다."),
     ITINERARY_INPUT_INSUFFICIENT(HttpStatus.BAD_REQUEST, "일정 생성에 필요한 조건이 부족합니다."),
     ITINERARY_GENERATION_TIMEOUT(HttpStatus.REQUEST_TIMEOUT, "일정 생성에 실패했습니다. 다시 시도해주세요."),
     ITINERARY_PROVIDER_FAILED(HttpStatus.BAD_GATEWAY, "일정 생성에 실패했습니다. 콘텐츠를 추가하거나 다시 시도해주세요."),
