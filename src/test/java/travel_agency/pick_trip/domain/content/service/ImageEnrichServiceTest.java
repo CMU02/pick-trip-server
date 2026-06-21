@@ -5,17 +5,22 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import feign.FeignException;
 import java.util.List;
+import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourPhotoClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiPhotoResponse;
 import travel_agency.pick_trip.domain.content.entity.ContentImage;
@@ -31,7 +36,16 @@ class ImageEnrichServiceTest {
     @Mock private TourPhotoClient tourPhotoClient;
     @Mock private TravelContentRepository travelContentRepository;
 
+    @Mock private TransactionTemplate transactionTemplate;
+
     @InjectMocks private ImageEnrichService imageEnrichService;
+
+    @BeforeEach
+    void setUpTx() {
+        // execute 는 콜백(조회·저장)을 즉시 실행하도록 스텁한다.
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(inv ->
+                inv.getArgument(0, TransactionCallback.class).doInTransaction(null));
+    }
 
     private TravelContent contentWithoutImage() {
         return TravelContent.builder()
@@ -58,6 +72,7 @@ class ImageEnrichServiceTest {
     void enrichRegion_이미지없음_보강() {
         TravelContent content = contentWithoutImage();
         given(travelContentRepository.findByRegion(Region.HADONG)).willReturn(List.of(content));
+        given(travelContentRepository.findById("126508")).willReturn(Optional.of(content));
         given(tourPhotoClient.searchGallery(anyString(), anyInt(), anyInt())).willReturn(photoResponse("1"));
 
         int enriched = imageEnrichService.enrichRegion(Region.HADONG);
