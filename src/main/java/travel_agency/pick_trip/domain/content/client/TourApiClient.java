@@ -7,6 +7,7 @@ import travel_agency.pick_trip.domain.content.client.dto.TourApiCodeResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailCommonResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailImageResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailIntroResponse;
+import travel_agency.pick_trip.domain.content.client.dto.TourApiFestivalResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
 
 @FeignClient(
@@ -46,6 +47,16 @@ public interface TourApiClient {
 
     @GetMapping("/detailImage2")
     TourApiDetailImageResponse getDetailImage(@RequestParam String contentId);
+
+    /** 행사/축제 검색. {@code eventStartDate}(yyyyMMdd) 이후 진행 중·예정 축제 목록. */
+    @GetMapping("/searchFestival2")
+    TourApiFestivalResponse searchFestival(
+            @RequestParam String eventStartDate,
+            @RequestParam(required = false) String areaCode,
+            @RequestParam(required = false) String sigunguCode,
+            @RequestParam int pageNo,
+            @RequestParam int numOfRows
+    );
 
     // --- 코드 seed (수집 2·3단계) ---
 

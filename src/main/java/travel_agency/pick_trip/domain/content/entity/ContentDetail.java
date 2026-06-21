@@ -52,6 +52,14 @@ public class ContentDetail {
 
     private String useFee;
 
+    // --- 축제 기간 (/searchFestival2, contentTypeId=15) ---
+
+    /** 축제 시작일 (yyyyMMdd) */
+    private String eventStartDate;
+
+    /** 축제 종료일 (yyyyMMdd) */
+    private String eventEndDate;
+
     // --- 자체 검수 필드 (이슈 A에서는 컬럼만 정의) ---
 
     private Boolean reservationRequired;
@@ -91,5 +99,28 @@ public class ContentDetail {
 
     void assignTravelContent(TravelContent travelContent) {
         this.travelContent = travelContent;
+    }
+
+    /** {@code /detailIntro2} 기반 상세 필드를 갱신한다 (수집 upsert). */
+    public void updateIntro(
+            String useTime,
+            String restDate,
+            String parking,
+            String chkBabyCarriage,
+            String chkPet,
+            String useFee
+    ) {
+        this.useTime = useTime;
+        this.restDate = restDate;
+        this.parking = parking;
+        this.chkBabyCarriage = chkBabyCarriage;
+        this.chkPet = chkPet;
+        this.useFee = useFee;
+    }
+
+    /** 축제 기간을 갱신한다 ({@code /searchFestival2}). */
+    public void updateEventPeriod(String eventStartDate, String eventEndDate) {
+        this.eventStartDate = eventStartDate;
+        this.eventEndDate = eventEndDate;
     }
 }
