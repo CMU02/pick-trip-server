@@ -54,6 +54,11 @@ public class PhotoSyncService {
             log.warn("[동기화] 관광사진 증분 조회 실패 from={} - 건너뜀: {}", modifiedtime, e.getMessage());
             return 0;
         }
+        if (response != null && response.isError()) {
+            log.warn("[동기화] 관광사진 TourAPI 오류 응답 from={} code={} msg={} - 건너뜀",
+                    modifiedtime, response.resultCode(), response.resultMsg());
+            return 0;
+        }
 
         int applied = 0;
         for (TourApiPhotoResponse.Item item : response.allItems()) {

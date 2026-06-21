@@ -2,6 +2,7 @@ package travel_agency.pick_trip.domain.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
@@ -149,5 +150,23 @@ class ContentCollectServiceTest {
 
         assertThat(collected).isZero();
         verify(travelContentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("목록 응답이 오류 결과코드(HTTP 200)면 해당 타입을 건너뛴다")
+    void collectRegion_오류코드_건너뜀() {
+        given(tourApiClient.getAreaBasedList(eq("36"), eq("18"), anyString(), eq(1), eq(100)))
+                .willReturn(errorListResponse());
+
+        int collected = contentCollectService.collectRegion(REGION);
+
+        assertThat(collected).isZero();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiListResponse errorListResponse() {
+        return new TourApiListResponse(new TourApiListResponse.Response(
+                new TourApiListResponse.Header("30", "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"),
+                new TourApiListResponse.Body(new TourApiListResponse.Items(List.of()), 0, 1, 0)));
     }
 }

@@ -40,6 +40,11 @@ public class ContentSyncService {
             log.warn("[동기화] {} 조회 실패 - 건너뜀: {}", region, e.getMessage());
             return 0;
         }
+        if (response != null && response.isError()) {
+            log.warn("[동기화] {} TourAPI 오류 응답 code={} msg={} - 건너뜀",
+                    region, response.resultCode(), response.resultMsg());
+            return 0;
+        }
 
         int updated = 0;
         for (TourApiSyncResponse.Item item : response.changes()) {

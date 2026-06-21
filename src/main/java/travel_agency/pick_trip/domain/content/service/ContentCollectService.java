@@ -51,14 +51,20 @@ public class ContentCollectService {
     }
 
     private int collectRegionByType(Region region, String contentTypeId) {
-        List<TourApiListResponse.Item> items;
+        TourApiListResponse response;
         try {
-            items = mapper.listItems(tourApiClient.getAreaBasedList(
-                    region.getAreaCode(), region.getSigunguCode(), contentTypeId, 1, PAGE_SIZE));
+            response = tourApiClient.getAreaBasedList(
+                    region.getAreaCode(), region.getSigunguCode(), contentTypeId, 1, PAGE_SIZE);
         } catch (FeignException e) {
             log.warn("[수집] 목록 조회 실패 region={} type={} - 건너뜀: {}", region, contentTypeId, e.getMessage());
             return 0;
         }
+        if (response != null && response.isError()) {
+            log.warn("[수집] 목록 TourAPI 오류 응답 region={} type={} code={} msg={} - 건너뜀",
+                    region, contentTypeId, response.resultCode(), response.resultMsg());
+            return 0;
+        }
+        List<TourApiListResponse.Item> items = mapper.listItems(response);
 
         int count = 0;
         for (TourApiListResponse.Item item : items) {

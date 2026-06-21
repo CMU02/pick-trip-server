@@ -46,6 +46,11 @@ public class FestivalCollectService {
             log.warn("[수집] 축제 조회 실패 region={} from={} - 건너뜀: {}", region, eventStartDate, e.getMessage());
             return 0;
         }
+        if (response != null && response.isError()) {
+            log.warn("[수집] 축제 TourAPI 오류 응답 region={} code={} msg={} - 건너뜀",
+                    region, response.resultCode(), response.resultMsg());
+            return 0;
+        }
 
         int count = 0;
         for (TourApiFestivalResponse.Item item : response.festivals()) {

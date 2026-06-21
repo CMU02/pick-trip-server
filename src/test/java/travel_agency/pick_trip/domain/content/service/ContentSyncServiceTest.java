@@ -110,4 +110,22 @@ class ContentSyncServiceTest {
         assertThat(updated).isZero();
         verify(travelContentRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("오류 결과코드(HTTP 200) 응답이면 반영하지 않는다")
+    void syncRegion_오류코드_미반영() {
+        given(tourApiClient.getAreaBasedSyncList("36", "18", null, null, 1, 100))
+                .willReturn(errorResponse());
+
+        int updated = contentSyncService.syncRegion(REGION);
+
+        assertThat(updated).isZero();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiSyncResponse errorResponse() {
+        return new TourApiSyncResponse(new TourApiSyncResponse.Response(
+                new TourApiSyncResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiSyncResponse.Body(new TourApiSyncResponse.Items(List.of()), 0, 1, 0)));
+    }
 }

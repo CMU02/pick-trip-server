@@ -48,8 +48,13 @@ public class ImageEnrichService {
 
     private boolean enrichOne(TravelContent content) {
         try {
-            List<TourApiPhotoResponse.Item> photos =
-                    tourPhotoClient.searchGallery(content.getTitle(), 1, PAGE_SIZE).usablePhotos();
+            TourApiPhotoResponse response = tourPhotoClient.searchGallery(content.getTitle(), 1, PAGE_SIZE);
+            if (response != null && response.isError()) {
+                log.warn("[보강] 콘텐츠 {} 갤러리 TourAPI 오류 응답 code={} msg={} - 건너뜀",
+                        content.getSourceContentId(), response.resultCode(), response.resultMsg());
+                return false;
+            }
+            List<TourApiPhotoResponse.Item> photos = response.usablePhotos();
             if (photos.isEmpty()) {
                 return false;
             }
