@@ -143,4 +143,39 @@ public class TravelContent {
     public void changeDataStatus(DataStatus dataStatus) {
         this.dataStatus = dataStatus;
     }
+
+    /** TourAPI 원천 필드를 갱신한다 (수집 upsert). null 인자는 해당 필드를 덮어쓰지 않는다. */
+    public void updateSourceData(
+            String contentTypeId,
+            String title,
+            String category,
+            String summary,
+            String address,
+            Double latitude,
+            Double longitude,
+            String tel,
+            String homepage,
+            String firstImage,
+            String modifiedTime
+    ) {
+        if (contentTypeId != null) this.contentTypeId = contentTypeId;
+        if (title != null) this.title = title;
+        if (category != null) this.category = category;
+        if (summary != null) this.summary = summary;
+        if (address != null) this.address = address;
+        if (latitude != null) this.latitude = latitude;
+        if (longitude != null) this.longitude = longitude;
+        if (tel != null) this.tel = tel;
+        if (homepage != null) this.homepage = homepage;
+        if (firstImage != null) this.firstImage = firstImage;
+        if (modifiedTime != null) this.modifiedTime = modifiedTime;
+    }
+
+    /** 기존 이미지를 모두 교체한다 (orphanRemoval 로 이전 이미지는 제거). */
+    public void replaceImages(List<ContentImage> newImages) {
+        this.images.clear();
+        for (ContentImage image : newImages) {
+            addImage(image);
+        }
+    }
 }
