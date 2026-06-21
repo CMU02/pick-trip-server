@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import travel_agency.pick_trip.domain.content.service.ContentSyncService;
 import travel_agency.pick_trip.domain.content.service.ImageEnrichService;
+import travel_agency.pick_trip.domain.content.service.PhotoSyncService;
 import travel_agency.pick_trip.domain.region.Region;
 
 @ExtendWith(MockitoExtension.class)
@@ -19,11 +20,12 @@ class ContentSyncSchedulerTest {
 
     @Mock private ContentSyncService contentSyncService;
     @Mock private ImageEnrichService imageEnrichService;
+    @Mock private PhotoSyncService photoSyncService;
 
     @InjectMocks private ContentSyncScheduler contentSyncScheduler;
 
     @Test
-    @DisplayName("모든 지역에 대해 동기화와 이미지 보강을 위임한다")
+    @DisplayName("모든 지역 동기화·이미지 보강과 관광사진 증분 동기화를 위임한다")
     void syncAllRegions_모든지역_위임() {
         contentSyncScheduler.syncAllRegions();
 
@@ -33,5 +35,6 @@ class ContentSyncSchedulerTest {
         }
         verify(contentSyncService, times(Region.values().length)).syncRegion(org.mockito.ArgumentMatchers.any());
         verify(imageEnrichService, times(Region.values().length)).enrichRegion(org.mockito.ArgumentMatchers.any());
+        verify(photoSyncService).syncRecentPhotos();
     }
 }

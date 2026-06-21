@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import travel_agency.pick_trip.domain.content.service.ContentSyncService;
 import travel_agency.pick_trip.domain.content.service.ImageEnrichService;
+import travel_agency.pick_trip.domain.content.service.PhotoSyncService;
 import travel_agency.pick_trip.domain.region.Region;
 
 /**
@@ -22,8 +23,9 @@ public class ContentSyncScheduler {
 
     private final ContentSyncService contentSyncService;
     private final ImageEnrichService imageEnrichService;
+    private final PhotoSyncService photoSyncService;
 
-    /** 기본 정보 동기화 + 이미지 보강. 기본값: 매주 월요일 새벽 4시. */
+    /** 기본 정보 동기화 + 이미지 보강 + 관광사진 증분 동기화. 기본값: 매주 월요일 새벽 4시. */
     @Scheduled(cron = "${tour-api.sync.cron:0 0 4 * * MON}")
     public void syncAllRegions() {
         log.info("[스케줄] TourAPI 동기화·이미지 보강 시작");
@@ -31,6 +33,7 @@ public class ContentSyncScheduler {
             contentSyncService.syncRegion(region);
             imageEnrichService.enrichRegion(region);
         }
+        photoSyncService.syncRecentPhotos();
         log.info("[스케줄] TourAPI 동기화·이미지 보강 완료");
     }
 }

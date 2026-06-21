@@ -30,15 +30,20 @@ public record TourApiPhotoResponse(Response response) {
             String galUseFlag
     ) {}
 
-    /** {@code galUseFlag=1}이고 이미지 URL이 있는 사진만 반환한다. */
-    public List<Item> usablePhotos() {
+    /** 응답이 비어 있어도 안전하게 전체 항목을 반환한다 (증분 동기화 대조용, 필터 없음). */
+    public List<Item> allItems() {
         if (response == null
                 || response.body() == null
                 || response.body().items() == null
                 || response.body().items().item() == null) {
             return List.of();
         }
-        return response.body().items().item().stream()
+        return response.body().items().item();
+    }
+
+    /** {@code galUseFlag=1}이고 이미지 URL이 있는 사진만 반환한다. */
+    public List<Item> usablePhotos() {
+        return allItems().stream()
                 .filter(item -> "1".equals(item.galUseFlag()))
                 .filter(item -> item.galWebImageUrl() != null && !item.galWebImageUrl().isBlank())
                 .toList();
