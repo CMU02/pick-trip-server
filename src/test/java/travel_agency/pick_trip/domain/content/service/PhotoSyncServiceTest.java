@@ -116,4 +116,22 @@ class PhotoSyncServiceTest {
         verify(contentImageRepository, never()).findBySourceAndImageUrl(any(), anyString());
         verify(contentImageRepository, never()).deleteAll(any());
     }
+
+    @Test
+    @DisplayName("증분 응답이 오류 결과코드(HTTP 200)면 반영하지 않는다")
+    void syncPhotos_오류코드_미반영() {
+        given(tourPhotoClient.syncGalleryDetail(FROM, 1, 100)).willReturn(errorResponse());
+
+        int applied = photoSyncService.syncPhotos(FROM);
+
+        assertThat(applied).isZero();
+        verify(contentImageRepository, never()).findBySourceAndImageUrl(any(), anyString());
+        verify(contentImageRepository, never()).deleteAll(any());
+    }
+
+    private TourApiPhotoResponse errorResponse() {
+        return new TourApiPhotoResponse(new TourApiPhotoResponse.Response(
+                new TourApiPhotoResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiPhotoResponse.Body(new TourApiPhotoResponse.Items(List.of()), 0, 1, 0)));
+    }
 }

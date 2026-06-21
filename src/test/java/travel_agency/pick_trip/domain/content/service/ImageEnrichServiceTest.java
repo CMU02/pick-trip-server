@@ -99,4 +99,24 @@ class ImageEnrichServiceTest {
         assertThat(content.getImages()).isEmpty();
         verify(travelContentRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("갤러리 응답이 오류 결과코드(HTTP 200)면 해당 콘텐츠를 건너뛴다")
+    void enrichRegion_오류코드_건너뜀() {
+        TravelContent content = contentWithoutImage();
+        given(travelContentRepository.findByRegion(Region.HADONG)).willReturn(List.of(content));
+        given(tourPhotoClient.searchGallery(anyString(), anyInt(), anyInt())).willReturn(errorResponse());
+
+        int enriched = imageEnrichService.enrichRegion(Region.HADONG);
+
+        assertThat(enriched).isZero();
+        assertThat(content.getImages()).isEmpty();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiPhotoResponse errorResponse() {
+        return new TourApiPhotoResponse(new TourApiPhotoResponse.Response(
+                new TourApiPhotoResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiPhotoResponse.Body(new TourApiPhotoResponse.Items(List.of()), 0, 1, 0)));
+    }
 }

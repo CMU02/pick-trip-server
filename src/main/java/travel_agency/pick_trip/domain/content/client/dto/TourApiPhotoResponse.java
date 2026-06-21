@@ -9,10 +9,18 @@ import java.util.List;
  * {@code galUseFlag=1}인 사진만 사용한다.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
-public record TourApiPhotoResponse(Response response) {
+public record TourApiPhotoResponse(Response response) implements TourApiResponse {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Response(Body body) {}
+    public record Response(Header header, Body body) {
+        /** 헤더 없는 과거 호환 생성자 (테스트·내부 생성용). */
+        public Response(Body body) {
+            this(null, body);
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Header(String resultCode, String resultMsg) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Body(Items items, int numOfRows, int pageNo, int totalCount) {}
@@ -47,5 +55,15 @@ public record TourApiPhotoResponse(Response response) {
                 .filter(item -> "1".equals(item.galUseFlag()))
                 .filter(item -> item.galWebImageUrl() != null && !item.galWebImageUrl().isBlank())
                 .toList();
+    }
+
+    @Override
+    public String resultCode() {
+        return response != null && response.header() != null ? response.header().resultCode() : null;
+    }
+
+    @Override
+    public String resultMsg() {
+        return response != null && response.header() != null ? response.header().resultMsg() : null;
     }
 }

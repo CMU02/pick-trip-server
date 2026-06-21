@@ -92,4 +92,22 @@ class FestivalCollectServiceTest {
         assertThat(collected).isZero();
         verify(travelContentRepository, never()).save(any());
     }
+
+    @Test
+    @DisplayName("축제 응답이 오류 결과코드(HTTP 200)면 저장하지 않는다")
+    void collectFestivals_오류코드_저장없음() {
+        given(tourApiClient.searchFestival(EVENT_FROM, "36", "18", 1, 100))
+                .willReturn(errorResponse());
+
+        int collected = festivalCollectService.collectFestivals(REGION, EVENT_FROM);
+
+        assertThat(collected).isZero();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiFestivalResponse errorResponse() {
+        return new TourApiFestivalResponse(new TourApiFestivalResponse.Response(
+                new TourApiFestivalResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiFestivalResponse.Body(new TourApiFestivalResponse.Items(List.of()), 0, 1, 0)));
+    }
 }
