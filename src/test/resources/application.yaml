@@ -47,4 +47,5 @@ app:
 
 tour-api:
   base-url: http://localhost
+  photo-base-url: http://localhost
   service-key: ci-dummy-tour-api-key

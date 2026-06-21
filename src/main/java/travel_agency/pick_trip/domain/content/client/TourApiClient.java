@@ -9,6 +9,7 @@ import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailImageRespo
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailIntroResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiFestivalResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
+import travel_agency.pick_trip.domain.content.client.dto.TourApiSyncResponse;
 
 @FeignClient(
         name = "tour-api",
@@ -54,6 +55,17 @@ public interface TourApiClient {
             @RequestParam String eventStartDate,
             @RequestParam(required = false) String areaCode,
             @RequestParam(required = false) String sigunguCode,
+            @RequestParam int pageNo,
+            @RequestParam int numOfRows
+    );
+
+    /** 콘텐츠 변경/삭제 동기화. {@code modifiedtime}(yyyyMMdd) 이후 변경분, {@code showflag}로 노출 여부. */
+    @GetMapping("/areaBasedSyncList2")
+    TourApiSyncResponse getAreaBasedSyncList(
+            @RequestParam String areaCode,
+            @RequestParam String sigunguCode,
+            @RequestParam(required = false) String contentTypeId,
+            @RequestParam(required = false) String modifiedtime,
             @RequestParam int pageNo,
             @RequestParam int numOfRows
     );
