@@ -23,4 +23,12 @@ public interface TourPhotoClient {
             @RequestParam int pageNo,
             @RequestParam int numOfRows
     );
+
+    /** 관광사진 변경분 증분 동기화. {@code modifiedtime}(yyyyMMdd) 이후 변경된 사진 목록. */
+    @GetMapping("/gallerySyncDetailList1")
+    TourApiPhotoResponse syncGalleryDetail(
+            @RequestParam String modifiedtime,
+            @RequestParam int pageNo,
+            @RequestParam int numOfRows
+    );
 }

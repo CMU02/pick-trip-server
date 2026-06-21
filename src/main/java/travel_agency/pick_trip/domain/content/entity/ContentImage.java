@@ -67,4 +67,11 @@ public class ContentImage {
     void assignTravelContent(TravelContent travelContent) {
         this.travelContent = travelContent;
     }
+
+    /** 증분 동기화 시 갤러리 메타데이터를 갱신한다. */
+    public void updateMetadata(String title, String copyrightType, String photographyMonth) {
+        this.title = title;
+        this.copyrightType = copyrightType;
+        this.photographyMonth = photographyMonth;
+    }
 }
