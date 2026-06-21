@@ -21,6 +21,10 @@ spring:
           google:
             clientId: ci-dummy-google-client-id
             clientSecret: ci-dummy-google-client-secret
+  # 전체 컨텍스트 로드 시 OpenAI 자동설정이 키를 요구하므로 더미 키를 주입한다.
+  ai:
+    openai:
+      api-key: ci-dummy-openai-key
 
 public-data-portal:
   key:

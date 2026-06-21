@@ -48,6 +48,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/share/**").permitAll()
                         // Basket - 여행 바구니는 로그인 필요
                         .requestMatchers("/api/v1/baskets/**").authenticated()
+                        // Itinerary - 일정 생성·저장·조회·수정·공유 생성은 로그인 필요
+                        .requestMatchers("/api/v1/itineraries/**").authenticated()
                         // 나머지 모든 요청은 인증 필요
                         // TODO: 현재 개발 중이기 때문에 잠시 요청은 인증 불필요, 추후 authenticated() 설정
                         .anyRequest().permitAll()

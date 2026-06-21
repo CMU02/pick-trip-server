@@ -17,3 +17,10 @@ spring:
         show_sql: false
         format_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
+
+  # AI 일정 생성 (OpenAI). API 키는 .env 로 주입하며 Git 에 커밋하지 않는다.
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      chat:
+          model: ${OPENAI_MODEL:gpt-5.1}
