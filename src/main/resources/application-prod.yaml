@@ -31,3 +31,7 @@ app:
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
 
+tour-api:
+  base-url: base-url
+  photo-base-url: https://apis.data.go.kr/B551011/PhotoGalleryService1
+  service-key: ${PUBLIC_DATA_PORTAL_KEY}
