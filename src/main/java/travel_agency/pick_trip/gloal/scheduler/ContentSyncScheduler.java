@@ -30,10 +30,27 @@ public class ContentSyncScheduler {
     public void syncAllRegions() {
         log.info("[스케줄] TourAPI 동기화·이미지 보강 시작");
         for (Region region : Region.values()) {
-            contentSyncService.syncRegion(region);
-            imageEnrichService.enrichRegion(region);
+            runStep(() -> contentSyncService.syncRegion(region), "콘텐츠 동기화", region);
+            runStep(() -> imageEnrichService.enrichRegion(region), "이미지 보강", region);
         }
-        photoSyncService.syncRecentPhotos();
+        runStep(photoSyncService::syncRecentPhotos, "관광사진 증분 동기화", null);
         log.info("[스케줄] TourAPI 동기화·이미지 보강 완료");
+    }
+
+    /**
+     * 한 단계의 예외를 격리한다. 특정 지역·단계 실패가 나머지 지역과 후속 단계(관광사진 동기화)를
+     * 중단시키지 않도록 {@link RuntimeException}을 잡아 스택트레이스를 로그에 남기고 계속 진행한다.
+     * (갱신 실패 시 기존 데이터를 유지한다는 동기화 전략과 일치)
+     */
+    private void runStep(Runnable step, String stepName, Region region) {
+        try {
+            step.run();
+        } catch (RuntimeException e) {
+            if (region != null) {
+                log.error("[스케줄] {} {} 단계 실패 - 건너뜀: {}", region, stepName, e.getMessage(), e);
+            } else {
+                log.error("[스케줄] {} 단계 실패 - 건너뜀: {}", stepName, e.getMessage(), e);
+            }
+        }
     }
 }

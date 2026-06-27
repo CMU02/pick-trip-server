@@ -2,8 +2,10 @@ package travel_agency.pick_trip.domain.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -11,6 +13,7 @@ import static org.mockito.Mockito.verify;
 import feign.FeignException;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -18,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailCommonResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailImageResponse;
@@ -33,6 +37,7 @@ class ContentCollectServiceTest {
 
     @Mock private TourApiClient tourApiClient;
     @Mock private TravelContentRepository travelContentRepository;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private ContentCollectService contentCollectService;
 
@@ -43,7 +48,12 @@ class ContentCollectServiceTest {
     void setUp() {
         // ContentCollectMapper 는 순수 파싱 로직이므로 실제 인스턴스를 사용한다.
         contentCollectService = new ContentCollectService(
-                tourApiClient, travelContentRepository, new ContentCollectMapper());
+                tourApiClient, travelContentRepository, new ContentCollectMapper(), transactionTemplate);
+        // executeWithoutResult 는 콜백(영속화)을 즉시 실행하도록 스텁한다.
+        lenient().doAnswer(inv -> {
+            inv.getArgument(0, Consumer.class).accept(null);
+            return null;
+        }).when(transactionTemplate).executeWithoutResult(any());
     }
 
     // --- 테스트 헬퍼 ---
@@ -142,12 +152,30 @@ class ContentCollectServiceTest {
     void collectRegion_상세실패_건너뜀() {
         given(tourApiClient.getAreaBasedList("36", "18", "12", 1, 100))
                 .willReturn(listResponse(listItem()));
-        given(travelContentRepository.findById(CONTENT_ID)).willReturn(Optional.empty());
+        // 상세 호출이 DB 조회보다 먼저이므로, 상세 실패 시 findById 는 호출되지 않는다.
         given(tourApiClient.getDetailCommon(CONTENT_ID)).willThrow(feignError());
 
         int collected = contentCollectService.collectRegion(REGION);
 
         assertThat(collected).isZero();
         verify(travelContentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("목록 응답이 오류 결과코드(HTTP 200)면 해당 타입을 건너뛴다")
+    void collectRegion_오류코드_건너뜀() {
+        given(tourApiClient.getAreaBasedList(eq("36"), eq("18"), anyString(), eq(1), eq(100)))
+                .willReturn(errorListResponse());
+
+        int collected = contentCollectService.collectRegion(REGION);
+
+        assertThat(collected).isZero();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiListResponse errorListResponse() {
+        return new TourApiListResponse(new TourApiListResponse.Response(
+                new TourApiListResponse.Header("30", "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"),
+                new TourApiListResponse.Body(new TourApiListResponse.Items(List.of()), 0, 1, 0)));
     }
 }

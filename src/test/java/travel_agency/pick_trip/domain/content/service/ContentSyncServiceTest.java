@@ -5,18 +5,22 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import feign.FeignException;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiSyncResponse;
 import travel_agency.pick_trip.domain.content.entity.DataStatus;
@@ -31,7 +35,16 @@ class ContentSyncServiceTest {
     @Mock private TourApiClient tourApiClient;
     @Mock private TravelContentRepository travelContentRepository;
 
+    @Mock private TransactionTemplate transactionTemplate;
+
     @InjectMocks private ContentSyncService contentSyncService;
+
+    @BeforeEach
+    void setUpTx() {
+        // execute 는 콜백(변경분 반영)을 즉시 실행하도록 스텁한다.
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(inv ->
+                inv.getArgument(0, TransactionCallback.class).doInTransaction(null));
+    }
 
     private static final Region REGION = Region.HADONG; // areaCode=36, sigunguCode=18
     private static final String CONTENT_ID = "126508";
@@ -109,5 +122,23 @@ class ContentSyncServiceTest {
 
         assertThat(updated).isZero();
         verify(travelContentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("오류 결과코드(HTTP 200) 응답이면 반영하지 않는다")
+    void syncRegion_오류코드_미반영() {
+        given(tourApiClient.getAreaBasedSyncList("36", "18", null, null, 1, 100))
+                .willReturn(errorResponse());
+
+        int updated = contentSyncService.syncRegion(REGION);
+
+        assertThat(updated).isZero();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiSyncResponse errorResponse() {
+        return new TourApiSyncResponse(new TourApiSyncResponse.Response(
+                new TourApiSyncResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiSyncResponse.Body(new TourApiSyncResponse.Items(List.of()), 0, 1, 0)));
     }
 }

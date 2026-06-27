@@ -3,6 +3,7 @@ package travel_agency.pick_trip.domain.content.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -17,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiFestivalResponse;
 import travel_agency.pick_trip.domain.content.entity.TravelContent;
@@ -29,6 +32,7 @@ class FestivalCollectServiceTest {
 
     @Mock private TourApiClient tourApiClient;
     @Mock private TravelContentRepository travelContentRepository;
+    @Mock private TransactionTemplate transactionTemplate;
 
     private FestivalCollectService festivalCollectService;
 
@@ -39,7 +43,10 @@ class FestivalCollectServiceTest {
     @BeforeEach
     void setUp() {
         festivalCollectService = new FestivalCollectService(
-                tourApiClient, travelContentRepository, new ContentCollectMapper());
+                tourApiClient, travelContentRepository, new ContentCollectMapper(), transactionTemplate);
+        // execute 는 콜백(축제 upsert)을 즉시 실행하도록 스텁한다.
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(inv ->
+                inv.getArgument(0, TransactionCallback.class).doInTransaction(null));
     }
 
     private TourApiFestivalResponse festivalResponse(TourApiFestivalResponse.Item... items) {
@@ -91,5 +98,23 @@ class FestivalCollectServiceTest {
 
         assertThat(collected).isZero();
         verify(travelContentRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("축제 응답이 오류 결과코드(HTTP 200)면 저장하지 않는다")
+    void collectFestivals_오류코드_저장없음() {
+        given(tourApiClient.searchFestival(EVENT_FROM, "36", "18", 1, 100))
+                .willReturn(errorResponse());
+
+        int collected = festivalCollectService.collectFestivals(REGION, EVENT_FROM);
+
+        assertThat(collected).isZero();
+        verify(travelContentRepository, never()).save(any());
+    }
+
+    private TourApiFestivalResponse errorResponse() {
+        return new TourApiFestivalResponse(new TourApiFestivalResponse.Response(
+                new TourApiFestivalResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiFestivalResponse.Body(new TourApiFestivalResponse.Items(List.of()), 0, 1, 0)));
     }
 }

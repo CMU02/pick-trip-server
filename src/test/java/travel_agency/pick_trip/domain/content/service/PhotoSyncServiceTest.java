@@ -6,17 +6,21 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import feign.FeignException;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourPhotoClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiPhotoResponse;
 import travel_agency.pick_trip.domain.content.entity.ContentImage;
@@ -30,7 +34,16 @@ class PhotoSyncServiceTest {
     @Mock private TourPhotoClient tourPhotoClient;
     @Mock private ContentImageRepository contentImageRepository;
 
+    @Mock private TransactionTemplate transactionTemplate;
+
     @InjectMocks private PhotoSyncService photoSyncService;
+
+    @BeforeEach
+    void setUpTx() {
+        // execute 는 콜백(사진 반영)을 즉시 실행하도록 스텁한다.
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(inv ->
+                inv.getArgument(0, TransactionCallback.class).doInTransaction(null));
+    }
 
     private static final String FROM = "20260614";
     private static final String IMAGE_URL = "http://photo/1.jpg";
@@ -115,5 +128,23 @@ class PhotoSyncServiceTest {
         assertThat(applied).isZero();
         verify(contentImageRepository, never()).findBySourceAndImageUrl(any(), anyString());
         verify(contentImageRepository, never()).deleteAll(any());
+    }
+
+    @Test
+    @DisplayName("증분 응답이 오류 결과코드(HTTP 200)면 반영하지 않는다")
+    void syncPhotos_오류코드_미반영() {
+        given(tourPhotoClient.syncGalleryDetail(FROM, 1, 100)).willReturn(errorResponse());
+
+        int applied = photoSyncService.syncPhotos(FROM);
+
+        assertThat(applied).isZero();
+        verify(contentImageRepository, never()).findBySourceAndImageUrl(any(), anyString());
+        verify(contentImageRepository, never()).deleteAll(any());
+    }
+
+    private TourApiPhotoResponse errorResponse() {
+        return new TourApiPhotoResponse(new TourApiPhotoResponse.Response(
+                new TourApiPhotoResponse.Header("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR"),
+                new TourApiPhotoResponse.Body(new TourApiPhotoResponse.Items(List.of()), 0, 1, 0)));
     }
 }

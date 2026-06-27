@@ -5,7 +5,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailCommonResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailIntroResponse;
@@ -24,6 +24,9 @@ import travel_agency.pick_trip.domain.region.Region;
  *
  * <p>보조 캐시 적재이며 실시간 조회 흐름은 변경하지 않는다. 콘텐츠 단위로 {@link FeignException}을
  * 잡아 일부 실패가 전체 수집을 막지 않게 하고, 실패 항목은 건너뛰며 로그를 남긴다(수동 트리거 전제).
+ *
+ * <p>외부 상세 호출은 트랜잭션 밖에서 수행하고, 영속화(save)만 콘텐츠 1건 단위의 짧은 트랜잭션
+ * ({@link TransactionTemplate})으로 감싼다. 외부 응답 대기 동안 DB 커넥션을 점유하지 않게 한다.
  */
 @Slf4j
 @Service
@@ -38,9 +41,9 @@ public class ContentCollectService {
     private final TourApiClient tourApiClient;
     private final TravelContentRepository travelContentRepository;
     private final ContentCollectMapper mapper;
+    private final TransactionTemplate transactionTemplate;
 
     /** 지역의 MVP 콘텐츠 타입을 모두 수집한다. 반환값은 성공 적재 건수. */
-    @Transactional
     public int collectRegion(Region region) {
         int collected = 0;
         for (String contentTypeId : MVP_CONTENT_TYPE_IDS) {
@@ -51,17 +54,22 @@ public class ContentCollectService {
     }
 
     private int collectRegionByType(Region region, String contentTypeId) {
-        List<TourApiListResponse.Item> items;
+        TourApiListResponse response;
         try {
-            items = mapper.listItems(tourApiClient.getAreaBasedList(
-                    region.getAreaCode(), region.getSigunguCode(), contentTypeId, 1, PAGE_SIZE));
+            response = tourApiClient.getAreaBasedList(
+                    region.getAreaCode(), region.getSigunguCode(), contentTypeId, 1, PAGE_SIZE);
         } catch (FeignException e) {
             log.warn("[수집] 목록 조회 실패 region={} type={} - 건너뜀: {}", region, contentTypeId, e.getMessage());
             return 0;
         }
+        if (response != null && response.isError()) {
+            log.warn("[수집] 목록 TourAPI 오류 응답 region={} type={} code={} msg={} - 건너뜀",
+                    region, contentTypeId, response.resultCode(), response.resultMsg());
+            return 0;
+        }
 
         int count = 0;
-        for (TourApiListResponse.Item item : items) {
+        for (TourApiListResponse.Item item : mapper.listItems(response)) {
             if (upsertContent(region, item)) {
                 count++;
             }
@@ -75,19 +83,78 @@ public class ContentCollectService {
             return false;
         }
         try {
-            TravelContent content = travelContentRepository.findById(contentId)
-                    .orElseGet(() -> newContent(region, listItem));
+            // 외부 상세 호출은 트랜잭션 밖에서 수행해 DB 커넥션을 점유하지 않는다.
+            TourApiDetailCommonResponse.Item common =
+                    mapper.firstCommon(tourApiClient.getDetailCommon(contentId));
+            String contentTypeId = resolveContentTypeId(common, listItem);
+            TourApiDetailIntroResponse.Item intro = null;
+            if (contentTypeId != null && !contentTypeId.isBlank()) {
+                intro = mapper.firstIntro(tourApiClient.getDetailIntro(contentId, contentTypeId));
+            }
+            List<ContentImage> images = mapper.toContentImages(tourApiClient.getDetailImage(contentId));
 
-            enrichCommon(content, contentId);
-            enrichIntro(content, contentId);
-            enrichImages(content, contentId);
-
-            travelContentRepository.save(content);
+            // 영속화만 짧은 트랜잭션으로 감싼다.
+            TourApiDetailCommonResponse.Item commonRef = common;
+            TourApiDetailIntroResponse.Item introRef = intro;
+            transactionTemplate.executeWithoutResult(status ->
+                    persistContent(region, listItem, commonRef, introRef, images));
             return true;
         } catch (FeignException e) {
             log.warn("[수집] 콘텐츠 {} 상세 보강 실패 - 건너뜀: {}", contentId, e.getMessage());
             return false;
         }
+    }
+
+    /** 외부 호출로 모은 상세 데이터를 트랜잭션 안에서 엔티티에 반영하고 저장한다. */
+    private void persistContent(Region region, TourApiListResponse.Item listItem,
+            TourApiDetailCommonResponse.Item common, TourApiDetailIntroResponse.Item intro,
+            List<ContentImage> images) {
+        TravelContent content = travelContentRepository.findById(listItem.contentid())
+                .orElseGet(() -> newContent(region, listItem));
+
+        if (common != null) {
+            content.updateSourceData(
+                    common.contenttypeid(),
+                    common.title(),
+                    null,
+                    common.overview(),
+                    mapper.buildAddress(common.addr1(), common.addr2()),
+                    mapper.parseLatitude(common.mapy()),
+                    mapper.parseLongitude(common.mapx()),
+                    common.tel(),
+                    common.homepage(),
+                    common.firstimage(),
+                    null
+            );
+        }
+        if (intro != null) {
+            ContentDetail detail = content.getDetail();
+            if (detail == null) {
+                detail = ContentDetail.builder().build();
+                content.assignDetail(detail);
+            }
+            detail.updateIntro(
+                    intro.usetime(),
+                    intro.restdate(),
+                    intro.parking(),
+                    intro.chkbabycarriage(),
+                    intro.chkpet(),
+                    intro.usefee()
+            );
+        }
+        if (!images.isEmpty()) {
+            content.replaceImages(images);
+        }
+        travelContentRepository.save(content);
+    }
+
+    /** 상세(common) 타입을 우선 사용하고, 없으면 목록 항목의 타입을 쓴다. */
+    private String resolveContentTypeId(TourApiDetailCommonResponse.Item common,
+            TourApiListResponse.Item listItem) {
+        if (common != null && common.contenttypeid() != null && !common.contenttypeid().isBlank()) {
+            return common.contenttypeid();
+        }
+        return listItem.contenttypeid();
     }
 
     private TravelContent newContent(Region region, TourApiListResponse.Item listItem) {
@@ -101,57 +168,5 @@ public class ContentCollectService {
                 .firstImage(listItem.firstimage())
                 .dataStatus(DataStatus.ACTIVE)
                 .build();
-    }
-
-    private void enrichCommon(TravelContent content, String contentId) {
-        TourApiDetailCommonResponse.Item common = mapper.firstCommon(tourApiClient.getDetailCommon(contentId));
-        if (common == null) {
-            return;
-        }
-        content.updateSourceData(
-                common.contenttypeid(),
-                common.title(),
-                null,
-                common.overview(),
-                mapper.buildAddress(common.addr1(), common.addr2()),
-                mapper.parseLatitude(common.mapy()),
-                mapper.parseLongitude(common.mapx()),
-                common.tel(),
-                common.homepage(),
-                common.firstimage(),
-                null
-        );
-    }
-
-    private void enrichIntro(TravelContent content, String contentId) {
-        String contentTypeId = content.getContentTypeId();
-        if (contentTypeId == null || contentTypeId.isBlank()) {
-            return;
-        }
-        TourApiDetailIntroResponse.Item intro =
-                mapper.firstIntro(tourApiClient.getDetailIntro(contentId, contentTypeId));
-        if (intro == null) {
-            return;
-        }
-        ContentDetail detail = content.getDetail();
-        if (detail == null) {
-            detail = ContentDetail.builder().build();
-            content.assignDetail(detail);
-        }
-        detail.updateIntro(
-                intro.usetime(),
-                intro.restdate(),
-                intro.parking(),
-                intro.chkbabycarriage(),
-                intro.chkpet(),
-                intro.usefee()
-        );
-    }
-
-    private void enrichImages(TravelContent content, String contentId) {
-        List<ContentImage> images = mapper.toContentImages(tourApiClient.getDetailImage(contentId));
-        if (!images.isEmpty()) {
-            content.replaceImages(images);
-        }
     }
 }
