@@ -5,8 +5,10 @@ import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import travel_agency.pick_trip.gloal.error.exception.PickTripException;
 
 @Slf4j
@@ -30,6 +32,22 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ErrorResponse> handleConstraintViolation(ConstraintViolationException e, HttpServletRequest request) {
+        log.warn("[{}] VALIDATION_FAILED - {}", request.getAttribute("traceId"), e.getMessage());
+        return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.getStatus())
+                .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED, (String) request.getAttribute("traceId")));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParameter(
+            MissingServletRequestParameterException e, HttpServletRequest request) {
+        log.warn("[{}] VALIDATION_FAILED - {}", request.getAttribute("traceId"), e.getMessage());
+        return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.getStatus())
+                .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED, (String) request.getAttribute("traceId")));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(
+            MethodArgumentTypeMismatchException e, HttpServletRequest request) {
         log.warn("[{}] VALIDATION_FAILED - {}", request.getAttribute("traceId"), e.getMessage());
         return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.getStatus())
                 .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED, (String) request.getAttribute("traceId")));
