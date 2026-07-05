@@ -28,6 +28,9 @@ public record TourApiDetailCommonResponse(Response response) {
             String mapx,
             String mapy,
             String firstimage,
-            String overview
+            String overview,
+            String lclsSystm1,
+            String lclsSystm2,
+            String lclsSystm3
     ) {}
 }

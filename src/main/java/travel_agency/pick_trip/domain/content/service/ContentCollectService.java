@@ -10,6 +10,7 @@ import travel_agency.pick_trip.domain.content.client.TourApiClient;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailCommonResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailIntroResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.content.entity.ContentDetail;
 import travel_agency.pick_trip.domain.content.entity.ContentImage;
 import travel_agency.pick_trip.domain.content.entity.DataStatus;
@@ -116,7 +117,7 @@ public class ContentCollectService {
             content.updateSourceData(
                     common.contenttypeid(),
                     common.title(),
-                    null,
+                    resolveCategory(common),
                     common.overview(),
                     mapper.buildAddress(common.addr1(), common.addr2()),
                     mapper.parseLatitude(common.mapy()),
@@ -146,6 +147,14 @@ public class ContentCollectService {
             content.replaceImages(images);
         }
         travelContentRepository.save(content);
+    }
+
+    /** TourAPI 신분류체계 원본 코드({@code lclsSystm1/2})를 내부 6종 카테고리로 변환한다. */
+    private ContentCategory resolveCategory(TourApiDetailCommonResponse.Item common) {
+        if (common == null) {
+            return null;
+        }
+        return ContentCategory.from(common.lclsSystm1(), common.lclsSystm2());
     }
 
     /** 상세(common) 타입을 우선 사용하고, 없으면 목록 항목의 타입을 쓴다. */

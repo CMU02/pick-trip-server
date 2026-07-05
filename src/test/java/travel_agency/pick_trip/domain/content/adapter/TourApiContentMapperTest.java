@@ -92,7 +92,7 @@ class TourApiContentMapperTest {
         @DisplayName("세 API 응답을 병합해 ContentDetailResponse를 반환한다")
         void mergesThreeResponses() {
             // given
-            // TourApiDetailCommonResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, tel, homepage, mapx, mapy, firstimage, overview
+            // TourApiDetailCommonResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, tel, homepage, mapx, mapy, firstimage, overview, lclsSystm1, lclsSystm2, lclsSystm3
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
                             new TourApiDetailCommonResponse.Body(
@@ -102,7 +102,8 @@ class TourApiContentMapperTest {
                                                     "경상남도 하동군 화개면", "",
                                                     "055-883-1901", "http://ssanggyesa.net",
                                                     "127.58", "35.27",
-                                                    "https://img.jpg", "한국의 4대 총림"
+                                                    "https://img.jpg", "한국의 4대 총림",
+                                                    null, null, null
                                             )
                                     ))
                             )

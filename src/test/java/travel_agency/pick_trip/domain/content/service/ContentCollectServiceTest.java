@@ -27,6 +27,7 @@ import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailCommonResp
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailImageResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailIntroResponse;
 import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.content.entity.TravelContent;
 import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
 import travel_agency.pick_trip.domain.region.Region;
@@ -69,11 +70,20 @@ class ContentCollectServiceTest {
     }
 
     private TourApiDetailCommonResponse commonResponse() {
+        return commonResponse(null, null, null);
+    }
+
+    private TourApiDetailCommonResponse commonResponse(String lclsSystm1, String lclsSystm2) {
+        return commonResponse(lclsSystm1, lclsSystm2, null);
+    }
+
+    private TourApiDetailCommonResponse commonResponse(String lclsSystm1, String lclsSystm2, String lclsSystm3) {
         return new TourApiDetailCommonResponse(new TourApiDetailCommonResponse.Response(
                 new TourApiDetailCommonResponse.Body(new TourApiDetailCommonResponse.Items(List.of(
                         new TourApiDetailCommonResponse.Item(
                                 CONTENT_ID, "12", "화개장터", "경남 하동군 화개면", "탑리", "055-000-0000",
-                                "http://hwagae.kr", "127.7", "35.1", "common.jpg", "지리산 자락의 전통 장터"))))));
+                                "http://hwagae.kr", "127.7", "35.1", "common.jpg", "지리산 자락의 전통 장터",
+                                lclsSystm1, lclsSystm2, lclsSystm3))))));
     }
 
     private TourApiDetailIntroResponse introResponse() {
@@ -123,6 +133,56 @@ class ContentCollectServiceTest {
         assertThat(saved.getDetail().getUseTime()).isEqualTo("09:00~18:00");
         assertThat(saved.getImages()).hasSize(1);
         assertThat(saved.getImages().get(0).getImageUrl()).isEqualTo("detail1.jpg");
+    }
+
+    @Test
+    @DisplayName("신분류체계 대분류 코드를 6종 category로 변환한다")
+    void collectRegion_신분류체계_대분류_매핑() {
+        given(tourApiClient.getAreaBasedList("36", "18", "12", 1, 100))
+                .willReturn(listResponse(listItem()));
+        given(travelContentRepository.findById(CONTENT_ID)).willReturn(Optional.empty());
+        given(tourApiClient.getDetailCommon(CONTENT_ID)).willReturn(commonResponse("NA", "NA05"));
+        given(tourApiClient.getDetailIntro(CONTENT_ID, "12")).willReturn(introResponse());
+        given(tourApiClient.getDetailImage(CONTENT_ID)).willReturn(imageResponse());
+
+        contentCollectService.collectRegion(REGION);
+
+        ArgumentCaptor<TravelContent> captor = ArgumentCaptor.forClass(TravelContent.class);
+        verify(travelContentRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getCategory()).isEqualTo(ContentCategory.NATURE);
+    }
+
+    @Test
+    @DisplayName("VE(문화관광) 중분류는 대분류 기본값 대신 개별 예외 매핑을 사용한다")
+    void collectRegion_신분류체계_VE_예외매핑() {
+        given(tourApiClient.getAreaBasedList("36", "18", "12", 1, 100))
+                .willReturn(listResponse(listItem()));
+        given(travelContentRepository.findById(CONTENT_ID)).willReturn(Optional.empty());
+        given(tourApiClient.getDetailCommon(CONTENT_ID)).willReturn(commonResponse("VE", "VE03"));
+        given(tourApiClient.getDetailIntro(CONTENT_ID, "12")).willReturn(introResponse());
+        given(tourApiClient.getDetailImage(CONTENT_ID)).willReturn(imageResponse());
+
+        contentCollectService.collectRegion(REGION);
+
+        ArgumentCaptor<TravelContent> captor = ArgumentCaptor.forClass(TravelContent.class);
+        verify(travelContentRepository, times(1)).save(captor.capture());
+        // VE 대분류 기본값은 ATTRACTION 이지만 VE03(도시공원)은 NATURE 로 예외 매핑된다.
+        assertThat(captor.getValue().getCategory()).isEqualTo(ContentCategory.NATURE);
+    }
+
+    @Test
+    @DisplayName("신분류체계 코드가 없으면 ATTRACTION으로 대체한다")
+    void collectRegion_신분류체계_코드없음_기본값() {
+        given(tourApiClient.getAreaBasedList("36", "18", "12", 1, 100))
+                .willReturn(listResponse(listItem()));
+        given(travelContentRepository.findById(CONTENT_ID)).willReturn(Optional.empty());
+        stubDetailCalls();
+
+        contentCollectService.collectRegion(REGION);
+
+        ArgumentCaptor<TravelContent> captor = ArgumentCaptor.forClass(TravelContent.class);
+        verify(travelContentRepository, times(1)).save(captor.capture());
+        assertThat(captor.getValue().getCategory()).isEqualTo(ContentCategory.ATTRACTION);
     }
 
     @Test
