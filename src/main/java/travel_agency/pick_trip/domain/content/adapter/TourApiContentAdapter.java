@@ -47,7 +47,7 @@ public class TourApiContentAdapter {
                         request.size()
                 );
             }
-            return mapper.toListResponse(raw, request.page(), request.size());
+            return mapper.toListResponse(raw, request.page(), request.size(), region);
         } catch (FeignException e) {
             throw new ContentException(ErrorCode.CONTENT_PROVIDER_FAILED);
         }

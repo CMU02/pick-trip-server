@@ -38,4 +38,12 @@ public enum Region {
         .findFirst()
         .orElseThrow(() -> new ContentException(ErrorCode.CONTENT_INVALID_REGION));
   }
+
+  /** TourAPI areaCode/sigunguCode 원본 값으로 지역을 역매핑한다. 대상 지역 밖이면 null. */
+  public static Region fromAreaCode(String areaCode, String sigunguCode) {
+    return Arrays.stream(values())
+        .filter(r -> r.areaCode.equals(areaCode) && r.sigunguCode.equals(sigunguCode))
+        .findFirst()
+        .orElse(null);
+  }
 }

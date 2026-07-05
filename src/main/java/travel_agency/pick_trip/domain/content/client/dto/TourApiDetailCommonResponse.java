@@ -31,6 +31,8 @@ public record TourApiDetailCommonResponse(Response response) {
             String overview,
             String lclsSystm1,
             String lclsSystm2,
-            String lclsSystm3
+            String lclsSystm3,
+            String areacode,
+            String sigungucode
     ) {}
 }

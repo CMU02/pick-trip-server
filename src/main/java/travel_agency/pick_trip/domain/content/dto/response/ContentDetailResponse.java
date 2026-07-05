@@ -1,6 +1,7 @@
 package travel_agency.pick_trip.domain.content.dto.response;
 
 import java.util.List;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 
 public record ContentDetailResponse(
         String contentId,
@@ -21,7 +22,10 @@ public record ContentDetailResponse(
         String stayDuration,
         Boolean reservationRequired,
         String dataSource,
-        List<ImageItem> images
+        List<ImageItem> images,
+        ContentCategory category,
+        boolean indoor,
+        String region
 ) {
     public record ImageItem(String imageUrl, String title) {}
 }

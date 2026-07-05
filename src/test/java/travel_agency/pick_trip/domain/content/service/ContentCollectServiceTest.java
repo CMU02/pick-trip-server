@@ -66,7 +66,8 @@ class ContentCollectServiceTest {
 
     private TourApiListResponse.Item listItem() {
         return new TourApiListResponse.Item(
-                CONTENT_ID, "12", "화개장터", "경남 하동군", "화개면", "127.7", "35.1", "list.jpg", "list2.jpg");
+                CONTENT_ID, "12", "화개장터", "경남 하동군", "화개면", "127.7", "35.1", "list.jpg", "list2.jpg",
+                null, null);
     }
 
     private TourApiDetailCommonResponse commonResponse() {
@@ -83,7 +84,7 @@ class ContentCollectServiceTest {
                         new TourApiDetailCommonResponse.Item(
                                 CONTENT_ID, "12", "화개장터", "경남 하동군 화개면", "탑리", "055-000-0000",
                                 "http://hwagae.kr", "127.7", "35.1", "common.jpg", "지리산 자락의 전통 장터",
-                                lclsSystm1, lclsSystm2, lclsSystm3))))));
+                                lclsSystm1, lclsSystm2, lclsSystm3, "36", "18"))))));
     }
 
     private TourApiDetailIntroResponse introResponse() {

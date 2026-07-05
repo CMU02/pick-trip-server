@@ -8,6 +8,8 @@ import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentSummaryResponse;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
+import travel_agency.pick_trip.domain.region.Region;
 import travel_agency.pick_trip.gloal.error.ErrorCode;
 import travel_agency.pick_trip.gloal.error.exception.ContentException;
 
@@ -18,14 +20,14 @@ import java.util.Optional;
 @Component
 public class TourApiContentMapper {
 
-    public ContentListResponse toListResponse(TourApiListResponse raw, int page, int size) {
+    public ContentListResponse toListResponse(TourApiListResponse raw, int page, int size, Region region) {
         List<ContentSummaryResponse> items = Optional.ofNullable(raw.response())
                 .map(TourApiListResponse.Response::body)
                 .map(TourApiListResponse.Body::items)
                 .map(TourApiListResponse.Items::item)
                 .orElse(Collections.emptyList())
                 .stream()
-                .map(this::toSummaryResponse)
+                .map(item -> toSummaryResponse(item, region))
                 .toList();
 
         int totalCount = Optional.ofNullable(raw.response())
@@ -48,6 +50,9 @@ public class TourApiContentMapper {
         TourApiDetailIntroResponse.Item introItem = extractFirst(intro);
         List<ContentDetailResponse.ImageItem> images = extractImages(image);
         int contentTypeId = parseIntOrZero(commonItem.contenttypeid());
+        ContentCategory category = ContentCategory.resolve(
+                commonItem.lclsSystm1(), commonItem.lclsSystm2(), commonItem.contenttypeid());
+        Region region = Region.fromAreaCode(commonItem.areacode(), commonItem.sigungucode());
 
         return new ContentDetailResponse(
                 commonItem.contentid(),
@@ -69,11 +74,16 @@ public class TourApiContentMapper {
                 ContentTypeCategory.stayDurationFor(contentTypeId),
                 null,
                 "TourAPI",
-                images
+                images,
+                category,
+                category.isIndoor(),
+                region != null ? region.name() : null
         );
     }
 
-    private ContentSummaryResponse toSummaryResponse(TourApiListResponse.Item item) {
+    private ContentSummaryResponse toSummaryResponse(TourApiListResponse.Item item, Region region) {
+        ContentCategory category = ContentCategory.resolve(
+                item.lclsSystm1(), item.lclsSystm2(), item.contenttypeid());
         return new ContentSummaryResponse(
                 item.contentid(),
                 item.title(),
@@ -81,7 +91,11 @@ public class TourApiContentMapper {
                 buildAddress(item.addr1(), item.addr2()),
                 item.firstimage(),
                 parseDouble(item.mapy()),
-                parseDouble(item.mapx())
+                parseDouble(item.mapx()),
+                category,
+                null,
+                category.isIndoor(),
+                region.name()
         );
     }
 

@@ -12,6 +12,7 @@ import travel_agency.pick_trip.domain.content.dto.request.ContentListRequest;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentSummaryResponse;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.region.Region;
 import travel_agency.pick_trip.gloal.error.ErrorCode;
 import travel_agency.pick_trip.gloal.error.exception.ContentException;
@@ -39,7 +40,8 @@ class ContentServiceTest {
             // given
             ContentListRequest request = new ContentListRequest("HADONG", null, null, null, null, 0, 20);
             ContentListResponse expected = new ContentListResponse(1, 0, 20, List.of(
-                    new ContentSummaryResponse("123", "쌍계사", 12, "경상남도 하동군", "https://img.jpg", 35.27, 127.58)
+                    new ContentSummaryResponse("123", "쌍계사", 12, "경상남도 하동군", "https://img.jpg", 35.27, 127.58,
+                            ContentCategory.ATTRACTION, null, false, "HADONG")
             ));
             given(adapter.fetchList(request, Region.HADONG)).willReturn(expected);
 
@@ -77,7 +79,8 @@ class ContentServiceTest {
                     "2741429", "쌍계사", 12, "경상남도 하동군", "055-883-1901", "http://ssanggyesa.net",
                     35.27, 127.58, "한국의 4대 총림", "03:00~18:00", "연중무휴",
                     "가능", "성인 3,000원", "불가", "불가",
-                    "약 2시간", null, "TourAPI", List.of()
+                    "약 2시간", null, "TourAPI", List.of(),
+                    ContentCategory.CULTURE, true, "HADONG"
             );
             given(adapter.fetchDetail("2741429")).willReturn(expected);
 

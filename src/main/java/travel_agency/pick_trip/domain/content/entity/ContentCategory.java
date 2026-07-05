@@ -46,6 +46,18 @@ public enum ContentCategory {
             "VE", ATTRACTION    // 문화관광 (depth2 override 없을 때 기본값)
     );
 
+    /** TourAPI contentTypeId(전체 8종) 기본 매핑. lclsSystm 코드가 없을 때만 사용하는 fallback. */
+    private static final Map<String, ContentCategory> CONTENT_TYPE_ID_DEFAULTS = Map.of(
+            "12", ATTRACTION,   // 관광지
+            "14", CULTURE,      // 문화시설
+            "15", FESTIVAL,     // 축제/공연/행사
+            "25", ATTRACTION,   // 여행코스
+            "28", EXPERIENCE,   // 레포츠
+            "32", ATTRACTION,   // 숙박 (6종에 숙박 버킷이 없어 fallback)
+            "38", ATTRACTION,   // 쇼핑
+            "39", FOOD          // 음식점
+    );
+
     /**
      * TourAPI 신분류체계 원본 코드를 내부 카테고리로 변환한다. depth2 예외 매핑을 우선 적용하고,
      * 없으면 depth1 기본 매핑을 적용한다. 둘 다 없으면 {@link #ATTRACTION}으로 대체한다.
@@ -58,5 +70,26 @@ public enum ContentCategory {
             return DEPTH1_DEFAULTS.get(lclsSystm1);
         }
         return ATTRACTION;
+    }
+
+    /** contentTypeId 단독 매핑(fallback). 알 수 없는 값이면 {@link #ATTRACTION}으로 대체한다. */
+    public static ContentCategory fromContentTypeId(String contentTypeId) {
+        return CONTENT_TYPE_ID_DEFAULTS.getOrDefault(contentTypeId, ATTRACTION);
+    }
+
+    /**
+     * lclsSystm 코드를 우선 사용하고, 없으면(null/blank) contentTypeId 기반 fallback을 사용한다.
+     * 실시간 조회 경로(목록/단건)에서 사용한다.
+     */
+    public static ContentCategory resolve(String lclsSystm1, String lclsSystm2, String contentTypeId) {
+        if (lclsSystm1 != null && !lclsSystm1.isBlank()) {
+            return from(lclsSystm1, lclsSystm2);
+        }
+        return fromContentTypeId(contentTypeId);
+    }
+
+    /** 카테고리 기준 실내/실외 추정. 음식·문화 시설류만 실내로 본다. */
+    public boolean isIndoor() {
+        return this == FOOD || this == CULTURE;
     }
 }

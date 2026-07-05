@@ -28,6 +28,7 @@ import travel_agency.pick_trip.domain.basket.entity.Priority;
 import travel_agency.pick_trip.domain.basket.entity.TravelCondition;
 import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.content.service.ContentService;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryGenerateResponse;
@@ -79,7 +80,8 @@ class ItineraryServiceTest {
         return new ContentDetailResponse(
                 contentId, "title-" + contentId, 12, "주소", "010", "home",
                 35.0, 127.0, "요약", "09:00-18:00", "월요일", "가능", "무료",
-                "없음", "불가", "2시간", Boolean.FALSE, "TourAPI", List.of()
+                "없음", "불가", "2시간", Boolean.FALSE, "TourAPI", List.of(),
+                ContentCategory.ATTRACTION, false, "HADONG"
         );
     }
 
