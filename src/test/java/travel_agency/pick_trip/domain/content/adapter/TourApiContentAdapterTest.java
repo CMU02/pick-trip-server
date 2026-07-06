@@ -54,7 +54,7 @@ class TourApiContentAdapterTest {
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);
-            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+            given(mapper.toListResponse(rawResponse, 0, 20, region)).willReturn(expected);
 
             // when
             ContentListResponse result = adapter.fetchList(request, region);
@@ -85,7 +85,7 @@ class TourApiContentAdapterTest {
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);
-            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+            given(mapper.toListResponse(rawResponse, 0, 20, region)).willReturn(expected);
 
             // when
             ContentListResponse result = adapter.fetchList(request, region);
@@ -115,7 +115,7 @@ class TourApiContentAdapterTest {
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);
-            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+            given(mapper.toListResponse(rawResponse, 0, 20, region)).willReturn(expected);
 
             // when
             ContentListResponse result = adapter.fetchList(request, region);
@@ -140,7 +140,7 @@ class TourApiContentAdapterTest {
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);
-            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+            given(mapper.toListResponse(rawResponse, 0, 20, region)).willReturn(expected);
 
             // when
             ContentListResponse result = adapter.fetchList(request, region);
@@ -165,7 +165,7 @@ class TourApiContentAdapterTest {
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);
-            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+            given(mapper.toListResponse(rawResponse, 0, 20, region)).willReturn(expected);
 
             // when
             ContentListResponse result = adapter.fetchList(request, region);
@@ -190,7 +190,7 @@ class TourApiContentAdapterTest {
                     eq(1),
                     eq(20)
             )).willReturn(rawResponse);
-            given(mapper.toListResponse(rawResponse, 0, 20)).willReturn(expected);
+            given(mapper.toListResponse(rawResponse, 0, 20, region)).willReturn(expected);
 
             // when
             ContentListResponse result = adapter.fetchList(request, region);

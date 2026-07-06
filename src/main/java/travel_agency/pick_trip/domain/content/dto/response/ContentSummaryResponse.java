@@ -1,5 +1,7 @@
 package travel_agency.pick_trip.domain.content.dto.response;
 
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
+
 public record ContentSummaryResponse(
         String contentId,
         String title,
@@ -7,6 +9,10 @@ public record ContentSummaryResponse(
         String address,
         String firstImage,
         double latitude,
-        double longitude
+        double longitude,
+        ContentCategory category,
+        String summary,
+        boolean indoor,
+        String region
 ) {
 }

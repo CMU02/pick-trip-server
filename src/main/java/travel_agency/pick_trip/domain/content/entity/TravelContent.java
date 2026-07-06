@@ -46,8 +46,9 @@ public class TravelContent {
     @Column(nullable = false)
     private Region region;
 
-    /** PickTrip 내부 카테고리 (contentTypeId + lclsSystm* 매핑) */
-    private String category;
+    /** PickTrip 내부 카테고리 (lclsSystm1/2 매핑) */
+    @Enumerated(EnumType.STRING)
+    private ContentCategory category;
 
     @Column(columnDefinition = "TEXT")
     private String summary;
@@ -100,7 +101,7 @@ public class TravelContent {
             String contentTypeId,
             String title,
             Region region,
-            String category,
+            ContentCategory category,
             String summary,
             String address,
             Double latitude,
@@ -148,7 +149,7 @@ public class TravelContent {
     public void updateSourceData(
             String contentTypeId,
             String title,
-            String category,
+            ContentCategory category,
             String summary,
             String address,
             Double latitude,

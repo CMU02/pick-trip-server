@@ -10,6 +10,8 @@ import travel_agency.pick_trip.domain.content.client.dto.TourApiDetailIntroRespo
 import travel_agency.pick_trip.domain.content.client.dto.TourApiListResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
 import travel_agency.pick_trip.domain.content.dto.response.ContentListResponse;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
+import travel_agency.pick_trip.domain.region.Region;
 
 import java.util.List;
 
@@ -33,12 +35,13 @@ class TourApiContentMapperTest {
         @DisplayName("정상적인 TourAPI 목록 응답을 ContentListResponse로 변환한다")
         void validResponse_mapsToContentListResponse() {
             // given
-            // TourApiListResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, mapx, mapy, firstimage, firstimage2
+            // TourApiListResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, mapx, mapy, firstimage, firstimage2, lclsSystm1, lclsSystm2
             TourApiListResponse.Item item = new TourApiListResponse.Item(
                     "2741429", "12", "쌍계사",
                     "경상남도 하동군 화개면 쌍계사길 59", "",
                     "127.581783", "35.273185",
-                    "https://example.com/img.jpg", ""
+                    "https://example.com/img.jpg", "",
+                    "HS", "HS01"
             );
             TourApiListResponse raw = new TourApiListResponse(
                     new TourApiListResponse.Response(
@@ -50,7 +53,7 @@ class TourApiContentMapperTest {
             );
 
             // when
-            ContentListResponse result = mapper.toListResponse(raw, 0, 20);
+            ContentListResponse result = mapper.toListResponse(raw, 0, 20, Region.HADONG);
 
             // then
             assertThat(result.totalCount()).isEqualTo(150);
@@ -60,6 +63,11 @@ class TourApiContentMapperTest {
             // mapy → latitude(위도), mapx → longitude(경도)
             assertThat(result.items().get(0).latitude()).isEqualTo(35.273185);
             assertThat(result.items().get(0).longitude()).isEqualTo(127.581783);
+            // lclsSystm1=HS(역사관광) → CULTURE, region은 요청 파라미터를 그대로 echo
+            assertThat(result.items().get(0).category()).isEqualTo(ContentCategory.CULTURE);
+            assertThat(result.items().get(0).indoor()).isTrue();
+            assertThat(result.items().get(0).region()).isEqualTo("HADONG");
+            assertThat(result.items().get(0).summary()).isNull();
         }
 
         @Test
@@ -76,7 +84,7 @@ class TourApiContentMapperTest {
             );
 
             // when
-            ContentListResponse result = mapper.toListResponse(raw, 0, 20);
+            ContentListResponse result = mapper.toListResponse(raw, 0, 20, Region.HADONG);
 
             // then
             assertThat(result.items()).isEmpty();
@@ -92,7 +100,7 @@ class TourApiContentMapperTest {
         @DisplayName("세 API 응답을 병합해 ContentDetailResponse를 반환한다")
         void mergesThreeResponses() {
             // given
-            // TourApiDetailCommonResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, tel, homepage, mapx, mapy, firstimage, overview
+            // TourApiDetailCommonResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, tel, homepage, mapx, mapy, firstimage, overview, lclsSystm1, lclsSystm2, lclsSystm3, areacode, sigungucode
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
                             new TourApiDetailCommonResponse.Body(
@@ -102,7 +110,9 @@ class TourApiContentMapperTest {
                                                     "경상남도 하동군 화개면", "",
                                                     "055-883-1901", "http://ssanggyesa.net",
                                                     "127.58", "35.27",
-                                                    "https://img.jpg", "한국의 4대 총림"
+                                                    "https://img.jpg", "한국의 4대 총림",
+                                                    "HS", "HS01", "HS010600",
+                                                    "36", "18"
                                             )
                                     ))
                             )
@@ -149,6 +159,10 @@ class TourApiContentMapperTest {
             assertThat(result.dataSource()).isEqualTo("TourAPI");
             assertThat(result.images()).hasSize(1);
             assertThat(result.images().get(0).imageUrl()).isEqualTo("https://img1.jpg");
+            // lclsSystm1=HS(역사관광) → CULTURE, areacode=36/sigungucode=18 → HADONG
+            assertThat(result.category()).isEqualTo(ContentCategory.CULTURE);
+            assertThat(result.indoor()).isTrue();
+            assertThat(result.region()).isEqualTo("HADONG");
         }
     }
 }

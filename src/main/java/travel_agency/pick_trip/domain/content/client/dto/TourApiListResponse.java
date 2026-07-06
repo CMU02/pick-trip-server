@@ -34,7 +34,9 @@ public record TourApiListResponse(Response response) implements TourApiResponse 
             String mapx,
             String mapy,
             String firstimage,
-            String firstimage2
+            String firstimage2,
+            String lclsSystm1,
+            String lclsSystm2
     ) {}
 
     @Override
