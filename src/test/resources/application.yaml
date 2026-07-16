@@ -14,13 +14,6 @@ spring:
         show_sql: false
         format_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            clientId: ci-dummy-google-client-id
-            clientSecret: ci-dummy-google-client-secret
   # 전체 컨텍스트 로드 시 OpenAI 자동설정이 키를 요구하므로 더미 키를 주입한다.
   ai:
     openai:
@@ -47,8 +40,6 @@ google:
 app:
   cors:
     allowed-origins: http://localhost:3000
-  oauth2:
-    redirect-uri: http://localhost:3000/auth/callback
 
 tour-api:
   base-url: http://localhost

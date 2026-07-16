@@ -3,17 +3,6 @@ spring:
     url: jdbc:mysql://${DB_URL}:${DB_PORT}/${DB_SCHEMA}?serverTimezone=Asia/Seoul
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
-  security:
-    oauth2:
-      client:
-        registration:
-          google:
-            clientId: ${GOOGLE_CLIENT_ID}
-            clientSecret: ${GOOGLE_CLIENT_SECRET}
-            scope:
-              - email
-              - profile
-
 
 public-data-portal:
   key:
@@ -36,8 +25,6 @@ google:
 app:
   cors:
     allowed-origins: http://localhost:3000
-  oauth2:
-    redirect-uri: ${OAUTH2_REDIRECT_URI}
 
 tour-api:
   base-url: base-url
