@@ -17,6 +17,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import travel_agency.pick_trip.domain.auth.dto.response.LoginResponse;
 import travel_agency.pick_trip.domain.auth.dto.response.TokenRefreshResponse;
+import travel_agency.pick_trip.domain.auth.service.GoogleAuthService;
 import travel_agency.pick_trip.domain.auth.service.KakaoAuthService;
 import travel_agency.pick_trip.domain.auth.service.TokenService;
 import travel_agency.pick_trip.gloal.error.GlobalExceptionHandler;
@@ -40,6 +41,7 @@ class AuthControllerTest {
     private MockMvc mockMvc;
 
     @Mock private KakaoAuthService kakaoAuthService;
+    @Mock private GoogleAuthService googleAuthService;
     @Mock private TokenService tokenService;
     @InjectMocks private AuthController authController;
 
@@ -98,6 +100,47 @@ class AuthControllerTest {
         void nullAuthorizationCode_returns400() throws Exception {
             // when / then
             mockMvc.perform(post("/api/v1/auth/login/kakao")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"authorizationCode\": null}"))
+                    .andExpect(status().isBadRequest());
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /api/v1/auth/login/google")
+    class GoogleLogin {
+
+        @Test
+        @DisplayName("유효한 authorizationCode로 요청하면 200과 토큰을 반환한다")
+        void validRequest_returns200WithTokens() throws Exception {
+            // given
+            given(googleAuthService.login(anyString()))
+                    .willReturn(new LoginResponse(ACCESS_TOKEN, REFRESH_TOKEN));
+
+            // when / then
+            mockMvc.perform(post("/api/v1/auth/login/google")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"authorizationCode\": \"test-code\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                    .andExpect(jsonPath("$.refreshToken").value(REFRESH_TOKEN));
+        }
+
+        @Test
+        @DisplayName("authorizationCode가 빈 문자열이면 400을 반환한다")
+        void blankAuthorizationCode_returns400() throws Exception {
+            // when / then
+            mockMvc.perform(post("/api/v1/auth/login/google")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"authorizationCode\": \"\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("authorizationCode 필드가 null이면 400을 반환한다")
+        void nullAuthorizationCode_returns400() throws Exception {
+            // when / then
+            mockMvc.perform(post("/api/v1/auth/login/google")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"authorizationCode\": null}"))
                     .andExpect(status().isBadRequest());
