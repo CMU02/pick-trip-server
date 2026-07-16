@@ -104,7 +104,7 @@ google:
 
 - `dto/request/GoogleLoginRequest`: `record(@NotBlank String authorizationCode)` — `KakaoLoginRequest`와 동일 구조
 - `dto/response/GoogleTokenResponse`: 구글 토큰 엔드포인트 응답 매핑 (`access_token`, `expires_in` 등 snake_case → `@JsonProperty`)
-- `dto/response/GoogleUserInfoResponse`: 구글 userinfo 엔드포인트 응답 매핑. `sub`, `email`, `name`, `picture` 필드는 flat 구조 (카카오처럼 nested 아님). `providerUserId()`/`email()`/`nickname()`/`profileImageUrl()` 헬퍼 메서드 제공
+- `dto/response/GoogleUserInfoResponse`: 구글 userinfo 엔드포인트 응답 매핑. `sub`, `email`, `name`, `picture` 필드는 flat 구조 (카카오처럼 nested 아님). 별도 헬퍼 메서드 없이 record 필드(`sub()`/`email()`/`name()`/`picture()`)를 그대로 사용
 
 ### Feign 클라이언트
 
