@@ -39,6 +39,11 @@ kakao:
   client-id: ci-dummy-kakao-client-id
   redirect-uri: http://localhost:8080/callback
 
+google:
+  client-id: ci-dummy-google-client-id
+  client-secret: ci-dummy-google-client-secret
+  redirect-uri: http://localhost:8080/callback
+
 app:
   cors:
     allowed-origins: http://localhost:3000
