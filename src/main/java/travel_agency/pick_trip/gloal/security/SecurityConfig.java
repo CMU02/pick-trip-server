@@ -40,8 +40,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // Auth - 인증 불필요
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/login/kakao").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/v1/auth/login/google").permitAll()
+                        // 소셜 로그인 시작·콜백 경로는 oauth2Login 이 처리한다.
+                        .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/token/refresh").permitAll()
                         // Content - 인증 불필요
                         .requestMatchers(HttpMethod.GET, "/api/v1/contents").permitAll()

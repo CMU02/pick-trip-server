@@ -11,13 +11,33 @@
 
 ## Auth
 
-| 메서드  | URL                          | 인증 필요 | 설명                         |
-| ------ | ---------------------------- | :------: | ---------------------------- |
-| POST   | `/api/v1/auth/login/kakao`   | X        | 카카오 OAuth 로그인           |
-| POST   | `/api/v1/auth/login/google`  | X        | 구글 OAuth 로그인             |
-| POST   | `/api/v1/auth/token/refresh` | X        | 액세스 토큰 재발급            |
-| DELETE | `/api/v1/auth/logout`        | O        | 로그아웃 (토큰 폐기)          |
-| GET    | `/api/v1/auth/me`            | O        | 현재 로그인 사용자 정보 조회  |
+| 메서드  | URL                             | 인증 필요 | 설명                          |
+| ------ | ------------------------------- | :------: | ----------------------------- |
+| GET    | `/oauth2/authorization/kakao`   | X        | 카카오 로그인 시작             |
+| GET    | `/oauth2/authorization/google`  | X        | 구글 로그인 시작               |
+| GET    | `/login/oauth2/code/{provider}` | X        | 소셜 로그인 콜백 (Spring 처리)  |
+| POST   | `/api/v1/auth/token/refresh`    | X        | 액세스 토큰 재발급             |
+| DELETE | `/api/v1/auth/logout`           | O        | 로그아웃 (토큰 폐기)           |
+
+현재 로그인 사용자 정보 조회는 `GET /api/v1/users/me` 로 제공한다(사용자 섹션 참고).
+
+### 소셜 로그인 흐름
+
+카카오·구글 모두 Spring Security 의 `oauth2Login` 이 처리한다. 클라이언트는 인가 코드를 다루지 않는다.
+
+1. 클라이언트가 `/oauth2/authorization/{kakao|google}` 로 이동
+2. 공급자 로그인·동의 후 `/login/oauth2/code/{provider}` 로 콜백
+3. 서버가 토큰 교환·사용자 저장 후, `app.oauth2.redirect-uri` 로
+   `?accessToken=...&refreshToken=...` 을 붙여 리다이렉트
+
+새 공급자를 추가하려면 `application.yaml` 에 registration·provider 를 넣고
+`OAuth2UserInfoFactory` 에 분기를 추가한다.
+
+## 사용자
+
+| 메서드 | URL                | 인증 필요 | 설명                     |
+| ----- | ------------------ | :------: | ------------------------ |
+| GET   | `/api/v1/users/me` | O        | 현재 로그인 사용자 정보 조회 |
 
 ## 콘텐츠
 

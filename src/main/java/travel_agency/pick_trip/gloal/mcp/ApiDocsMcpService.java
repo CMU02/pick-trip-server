@@ -16,7 +16,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.DefaultParameterNameDiscoverer;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.ParameterNameDiscoverer;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -38,11 +41,17 @@ import travel_agency.pick_trip.gloal.error.ErrorCode;
 public class ApiDocsMcpService {
 
     private final RequestMappingHandlerMapping handlerMapping;
+    private final ClientRegistrationRepository clientRegistrationRepository;
     private final ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
 
+    @Value("${app.oauth2.redirect-uri}")
+    private String successRedirectUri;
+
     public ApiDocsMcpService(
-            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping) {
+            @Qualifier("requestMappingHandlerMapping") RequestMappingHandlerMapping handlerMapping,
+            ClientRegistrationRepository clientRegistrationRepository) {
         this.handlerMapping = handlerMapping;
+        this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
     // --- MCP 도구 ---
@@ -73,6 +82,34 @@ public class ApiDocsMcpService {
                 .filter(e -> e.path().toLowerCase(Locale.ROOT).contains(k)
                         || e.handler().toLowerCase(Locale.ROOT).contains(k))
                 .toList();
+    }
+
+    @Tool(description = "소셜 로그인(OAuth2) 시작·콜백 경로와 로그인 흐름을 반환한다. 이 경로들은 Spring Security 필터가 처리하므로 listEndpoints 에는 나오지 않는다.")
+    public SocialLoginGuide getSocialLoginGuide() {
+        List<SocialLoginProvider> providers = new ArrayList<>();
+        // 등록된 공급자를 설정에서 읽어 경로를 만든다. 공급자를 추가해도 이 도구는 그대로 따라간다.
+        if (clientRegistrationRepository instanceof Iterable<?> registrations) {
+            for (Object candidate : registrations) {
+                if (candidate instanceof ClientRegistration registration) {
+                    providers.add(new SocialLoginProvider(
+                            registration.getRegistrationId(),
+                            registration.getClientName(),
+                            "/oauth2/authorization/" + registration.getRegistrationId(),
+                            registration.getRedirectUri()));
+                }
+            }
+        }
+        providers.sort(Comparator.comparing(SocialLoginProvider::registrationId));
+
+        List<String> flow = List.of(
+                "1. 클라이언트를 loginStartPath 로 이동시킨다(fetch/XHR 이 아니라 브라우저 이동이어야 한다).",
+                "2. 공급자 로그인·동의 후 callbackPath 로 콜백되며, 서버가 토큰 교환과 사용자 저장을 처리한다.",
+                "3. 서버가 successRedirect 로 ?accessToken=...&refreshToken=... 을 붙여 리다이렉트한다.",
+                "4. 클라이언트는 두 토큰을 저장한 뒤 주소창의 쿼리를 제거한다(history.replaceState).",
+                "5. 이후 요청은 Authorization: Bearer <accessToken> 헤더를 사용하고,"
+                        + " 만료 시 POST /api/v1/auth/token/refresh 로 재발급받는다.");
+
+        return new SocialLoginGuide(providers, successRedirectUri, flow);
     }
 
     @Tool(description = "모든 API 예외에 공통으로 적용되는 에러 응답 계약(code/message/traceId)과 전체 에러 코드 목록을 반환한다.")
@@ -210,6 +247,18 @@ public class ApiDocsMcpService {
             List<FieldInfo> requestBody,
             String responseType,
             List<FieldInfo> responseFields) {}
+
+    /** callbackPath 는 설정 그대로의 템플릿이다(예: {baseUrl}/login/oauth2/code/kakao). */
+    public record SocialLoginProvider(
+            String registrationId,
+            String clientName,
+            String loginStartPath,
+            String callbackPath) {}
+
+    public record SocialLoginGuide(
+            List<SocialLoginProvider> providers,
+            String successRedirect,
+            List<String> flow) {}
 
     public record ErrorCodeInfo(String code, String status, String message) {}
 
