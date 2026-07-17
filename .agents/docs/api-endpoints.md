@@ -18,7 +18,8 @@
 | GET    | `/login/oauth2/code/{provider}` | X        | 소셜 로그인 콜백 (Spring 처리)  |
 | POST   | `/api/v1/auth/token/refresh`    | X        | 액세스 토큰 재발급             |
 | DELETE | `/api/v1/auth/logout`           | O        | 로그아웃 (토큰 폐기)           |
-| GET    | `/api/v1/auth/me`               | O        | 현재 로그인 사용자 정보 조회 🚧 미구현 |
+
+현재 로그인 사용자 정보 조회는 `GET /api/v1/users/me` 로 제공한다(사용자 섹션 참고).
 
 ### 소셜 로그인 흐름
 
@@ -31,6 +32,12 @@
 
 새 공급자를 추가하려면 `application.yaml` 에 registration·provider 를 넣고
 `OAuth2UserInfoFactory` 에 분기를 추가한다.
+
+## 사용자
+
+| 메서드 | URL                | 인증 필요 | 설명                     |
+| ----- | ------------------ | :------: | ------------------------ |
+| GET   | `/api/v1/users/me` | O        | 현재 로그인 사용자 정보 조회 |
 
 ## 콘텐츠
 
