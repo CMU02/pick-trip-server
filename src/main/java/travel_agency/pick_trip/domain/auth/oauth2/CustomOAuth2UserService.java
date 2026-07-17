@@ -9,13 +9,12 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import travel_agency.pick_trip.domain.user.entity.OAuthProvider;
+import travel_agency.pick_trip.domain.auth.oauth2.userinfo.OAuth2UserInfo;
+import travel_agency.pick_trip.domain.auth.oauth2.userinfo.OAuth2UserInfoFactory;
 import travel_agency.pick_trip.domain.user.entity.User;
 import travel_agency.pick_trip.domain.user.repository.UserRepository;
 import travel_agency.pick_trip.gloal.error.ErrorCode;
 import travel_agency.pick_trip.gloal.error.exception.OAuthProviderException;
-
-import java.util.Map;
 
 @Slf4j
 @Service
@@ -29,33 +28,30 @@ public class CustomOAuth2UserService implements OAuth2UserService<OAuth2UserRequ
     @Transactional
     public OAuth2User loadUser(OAuth2UserRequest userRequest) throws OAuth2AuthenticationException {
         OAuth2User oAuth2User = delegate.loadUser(userRequest);
-        Map<String, Object> attributes = oAuth2User.getAttributes();
+        String registrationId = userRequest.getClientRegistration().getRegistrationId();
+        OAuth2UserInfo userInfo = OAuth2UserInfoFactory.of(registrationId, oAuth2User.getAttributes());
 
-        // 구글은 "sub" 필드가 고유 사용자 식별자다.
-        String providerUserId = (String) attributes.get("sub");
+        String providerUserId = userInfo.providerUserId();
         if (providerUserId == null) {
-            log.error("구글 OAuth2 사용자 정보에 sub 필드가 없습니다.");
+            log.error("OAuth2 사용자 정보에 식별자가 없습니다 - registrationId: {}", registrationId);
             throw new OAuthProviderException(ErrorCode.AUTH_PROVIDER_ERROR);
         }
-        String email = (String) attributes.get("email");
-        String nickname = (String) attributes.get("name");
-        String profileImageUrl = (String) attributes.get("picture");
 
-        // 재로그인 시 닉네임·프로필 이미지를 최신 구글 정보로 동기화한다.
-        // 이메일은 최초 가입 시만 저장하고 이후 변경하지 않는다.
-        User user = userRepository.findByProviderAndProviderUserId(OAuthProvider.GOOGLE, providerUserId)
+        // 재로그인 시 닉네임·프로필 이미지를 최신 공급자 정보로 동기화한다.
+        // 이메일은 최초 가입 시만 저장하고 이후 변경하지 않는다 (동의 항목 변경 방어).
+        User user = userRepository.findByProviderAndProviderUserId(userInfo.provider(), providerUserId)
                 .map(existing -> {
-                    existing.updateProfile(nickname, profileImageUrl);
+                    existing.updateProfile(userInfo.nickname(), userInfo.profileImageUrl());
                     return existing;
                 })
                 .orElseGet(() -> userRepository.save(User.builder()
-                        .provider(OAuthProvider.GOOGLE)
+                        .provider(userInfo.provider())
                         .providerUserId(providerUserId)
-                        .email(email)
-                        .nickname(nickname)
-                        .profileImageUrl(profileImageUrl)
+                        .email(userInfo.email())
+                        .nickname(userInfo.nickname())
+                        .profileImageUrl(userInfo.profileImageUrl())
                         .build()));
 
-        return new OAuth2UserAdapter(user, attributes);
+        return new OAuth2UserAdapter(user, oAuth2User.getAttributes());
     }
 }

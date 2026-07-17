@@ -13,6 +13,10 @@ spring:
             scope:
               - email
               - profile
+          # 나머지 카카오 설정(provider, scope 등)은 application.yaml 에 있다.
+          kakao:
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET_PASSWORD}
 
 
 public-data-portal:
@@ -23,10 +27,6 @@ jwt:
   secret-key: ${JWT_SECRET_KEY}
   access-token-expire-time: 3600000   # 1시간 (ms)
   refresh-token-expire-time: 14       # 14일 (days)
-
-kakao:
-  client-id: ${KAKAO_CLIENT_ID}
-  redirect-uri: ${KAKAO_REDIRECT_URI}
 
 app:
   cors:
