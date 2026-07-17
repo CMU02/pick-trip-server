@@ -13,8 +13,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
+import travel_agency.pick_trip.domain.auth.dto.response.OAuthExchangeResponse;
 import travel_agency.pick_trip.domain.auth.dto.response.TokenRefreshResponse;
 import travel_agency.pick_trip.domain.auth.entity.RefreshToken;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthExchangeCodeStore;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthExchangeData;
 import travel_agency.pick_trip.domain.auth.repository.RefreshTokenRepository;
 import travel_agency.pick_trip.domain.user.entity.OAuthProvider;
 import travel_agency.pick_trip.domain.user.entity.User;
@@ -45,6 +48,7 @@ class TokenServiceTest {
     @Mock private JwtUtil jwtUtil;
     @Mock private UserRepository userRepository;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private OAuthExchangeCodeStore exchangeCodeStore;
 
     private static final UUID USER_UID = UUID.randomUUID();
     private static final String STORED_REFRESH_TOKEN = "stored-refresh-token";
@@ -199,6 +203,73 @@ class TokenServiceTest {
             JwtUserInfo expected = new JwtUserInfo(USER_UID, user.getNickname(), user.getEmail(), user.getRole().name());
             then(jwtUtil).should().generateAccessToken(expected);
             then(jwtUtil).should().generateRefreshToken(expected);
+        }
+    }
+
+    @Nested
+    @DisplayName("OAuth 교환 코드")
+    class Exchange {
+
+        private static final String CODE = "opaque-code";
+        private static final String NONCE = "browser-nonce";
+        private static final String EXCHANGE_ACCESS_TOKEN = "exchange-access";
+        private static final String EXCHANGE_REFRESH_TOKEN = "exchange-refresh";
+
+        private OAuthExchangeData boundData(String nonce) {
+            return new OAuthExchangeData(USER_UID, EXCHANGE_ACCESS_TOKEN, EXCHANGE_REFRESH_TOKEN, nonce);
+        }
+
+        @Test
+        @DisplayName("유효한 코드와 일치하는 nonce면 바인딩된 토큰을 반환한다")
+        void exchange_validCodeAndNonce_returnsTokens() {
+            // given
+            given(exchangeCodeStore.consume(CODE)).willReturn(Optional.of(boundData(NONCE)));
+
+            // when
+            OAuthExchangeResponse response = tokenService.exchange(CODE, NONCE);
+
+            // then
+            assertThat(response.accessToken()).isEqualTo(EXCHANGE_ACCESS_TOKEN);
+            assertThat(response.refreshToken()).isEqualTo(EXCHANGE_REFRESH_TOKEN);
+        }
+
+        @Test
+        @DisplayName("존재하지 않거나 재사용/만료된 코드면 AUTH_INVALID_EXCHANGE_CODE 예외를 던진다")
+        void exchange_unknownCode_throwsInvalidExchangeCode() {
+            // given: 저장소가 빈 값을 반환(없음/재사용/만료)
+            given(exchangeCodeStore.consume(CODE)).willReturn(Optional.empty());
+
+            // when / then
+            assertThatThrownBy(() -> tokenService.exchange(CODE, NONCE))
+                    .isInstanceOf(AuthException.class)
+                    .extracting(e -> ((AuthException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.AUTH_INVALID_EXCHANGE_CODE);
+        }
+
+        @Test
+        @DisplayName("nonce가 코드에 바인딩된 값과 다르면 AUTH_INVALID_EXCHANGE_CODE 예외를 던진다")
+        void exchange_nonceMismatch_throwsInvalidExchangeCode() {
+            // given
+            given(exchangeCodeStore.consume(CODE)).willReturn(Optional.of(boundData(NONCE)));
+
+            // when / then
+            assertThatThrownBy(() -> tokenService.exchange(CODE, "attacker-nonce"))
+                    .isInstanceOf(AuthException.class)
+                    .extracting(e -> ((AuthException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.AUTH_INVALID_EXCHANGE_CODE);
+        }
+
+        @Test
+        @DisplayName("코드에 nonce가 바인딩되지 않았으면(null) 검증 불가로 거부한다")
+        void exchange_unboundNonce_throwsInvalidExchangeCode() {
+            // given: nonce 미전달 로그인으로 발급된 코드
+            given(exchangeCodeStore.consume(CODE)).willReturn(Optional.of(boundData(null)));
+
+            // when / then
+            assertThatThrownBy(() -> tokenService.exchange(CODE, NONCE))
+                    .isInstanceOf(AuthException.class)
+                    .extracting(e -> ((AuthException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.AUTH_INVALID_EXCHANGE_CODE);
         }
     }
 

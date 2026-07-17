@@ -14,6 +14,7 @@ public enum ErrorCode {
     AUTH_REQUIRED(HttpStatus.UNAUTHORIZED, "로그인이 필요합니다."),
     AUTH_PROVIDER_ERROR(HttpStatus.UNAUTHORIZED, "로그인에 실패했습니다. 잠시 후 다시 시도해주세요."),
     AUTH_REFRESH_TOKEN_NOT_FOUND(HttpStatus.UNAUTHORIZED, "리프레시 토큰이 유효하지 않습니다."),
+    AUTH_INVALID_EXCHANGE_CODE(HttpStatus.UNAUTHORIZED, "유효하지 않은 인증 코드입니다. 다시 로그인해주세요."),
     AUTH_FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),
 
     // User

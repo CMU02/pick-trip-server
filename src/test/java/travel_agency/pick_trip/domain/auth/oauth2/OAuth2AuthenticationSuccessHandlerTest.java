@@ -5,6 +5,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -13,6 +14,9 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.test.util.ReflectionTestUtils;
 import travel_agency.pick_trip.domain.auth.entity.RefreshToken;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthExchangeCodeStore;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthExchangeData;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthNonceStore;
 import travel_agency.pick_trip.domain.auth.repository.RefreshTokenRepository;
 import travel_agency.pick_trip.domain.user.entity.OAuthProvider;
 import travel_agency.pick_trip.domain.user.entity.User;
@@ -39,11 +43,14 @@ class OAuth2AuthenticationSuccessHandlerTest {
 
     @Mock private JwtUtil jwtUtil;
     @Mock private RefreshTokenRepository refreshTokenRepository;
+    @Mock private OAuthExchangeCodeStore exchangeCodeStore;
+    @Mock private OAuthNonceStore nonceStore;
 
     private static final UUID USER_UID = UUID.randomUUID();
     private static final String REDIRECT_URI = "http://localhost:3000/auth/callback";
     private static final String ACCESS_TOKEN = "access-token";
     private static final String REFRESH_TOKEN_VALUE = "refresh-token";
+    private static final String EXCHANGE_CODE = "opaque-exchange-code";
     private static final long REFRESH_EXPIRE_DAYS = 14L;
 
     @BeforeEach
@@ -72,49 +79,98 @@ class OAuth2AuthenticationSuccessHandlerTest {
         return authentication;
     }
 
+    private void stubTokenIssue() {
+        given(jwtUtil.generateAccessToken(any(JwtUserInfo.class))).willReturn(ACCESS_TOKEN);
+        given(jwtUtil.generateRefreshToken(any(JwtUserInfo.class))).willReturn(REFRESH_TOKEN_VALUE);
+        given(refreshTokenRepository.findById(USER_UID)).willReturn(Optional.empty());
+        given(exchangeCodeStore.issue(any(OAuthExchangeData.class))).willReturn(EXCHANGE_CODE);
+    }
+
     @Nested
-    @DisplayName("리다이렉트 URL")
+    @DisplayName("리다이렉트 URL (토큰 비노출)")
     class RedirectUrl {
 
         @Test
-        @DisplayName("인증 성공 시 accessToken과 refreshToken이 리다이렉트 URL 쿼리 파라미터에 포함된다")
-        void onSuccess_redirectUrlContainsBothTokens() throws Exception {
+        @DisplayName("리다이렉트 URL에는 code만 실리고 accessToken/refreshToken은 노출되지 않는다")
+        void onSuccess_redirectUrlContainsCodeOnly() throws Exception {
             // given
-            User user = userWithUid(USER_UID);
-            given(jwtUtil.generateAccessToken(any(JwtUserInfo.class))).willReturn(ACCESS_TOKEN);
-            given(jwtUtil.generateRefreshToken(any(JwtUserInfo.class))).willReturn(REFRESH_TOKEN_VALUE);
-            given(refreshTokenRepository.findById(USER_UID)).willReturn(Optional.empty());
-
+            stubTokenIssue();
             MockHttpServletResponse response = new MockHttpServletResponse();
 
             // when
             successHandler.onAuthenticationSuccess(
-                    new MockHttpServletRequest(), response, mockAuthentication(user));
+                    new MockHttpServletRequest(), response, mockAuthentication(userWithUid(USER_UID)));
 
             // then
             String redirectedUrl = response.getRedirectedUrl();
-            assertThat(redirectedUrl).startsWith(REDIRECT_URI);
-            assertThat(redirectedUrl).contains("accessToken=" + ACCESS_TOKEN);
-            assertThat(redirectedUrl).contains("refreshToken=" + REFRESH_TOKEN_VALUE);
+            assertThat(redirectedUrl).startsWith(REDIRECT_URI + "?");
+            assertThat(redirectedUrl).contains("code=" + EXCHANGE_CODE);
+            assertThat(redirectedUrl).doesNotContain("accessToken");
+            assertThat(redirectedUrl).doesNotContain("refreshToken");
+            assertThat(redirectedUrl).doesNotContain(ACCESS_TOKEN);
+            assertThat(redirectedUrl).doesNotContain(REFRESH_TOKEN_VALUE);
         }
 
         @Test
-        @DisplayName("리다이렉트 URL의 기본 경로가 설정된 redirectUri와 일치한다")
-        void onSuccess_redirectUrlBaseMatchesConfig() throws Exception {
+        @DisplayName("발급된 교환 코드에 실제 토큰이 서버 측 저장소로 담긴다")
+        void onSuccess_storesTokensInExchangeStore() throws Exception {
             // given
-            User user = userWithUid(USER_UID);
-            given(jwtUtil.generateAccessToken(any())).willReturn(ACCESS_TOKEN);
-            given(jwtUtil.generateRefreshToken(any())).willReturn(REFRESH_TOKEN_VALUE);
-            given(refreshTokenRepository.findById(USER_UID)).willReturn(Optional.empty());
-
-            MockHttpServletResponse response = new MockHttpServletResponse();
+            stubTokenIssue();
 
             // when
             successHandler.onAuthenticationSuccess(
-                    new MockHttpServletRequest(), response, mockAuthentication(user));
+                    new MockHttpServletRequest(), new MockHttpServletResponse(), mockAuthentication(userWithUid(USER_UID)));
 
             // then
-            assertThat(response.getRedirectedUrl()).startsWith(REDIRECT_URI + "?");
+            ArgumentCaptor<OAuthExchangeData> captor = ArgumentCaptor.forClass(OAuthExchangeData.class);
+            then(exchangeCodeStore).should().issue(captor.capture());
+            OAuthExchangeData data = captor.getValue();
+            assertThat(data.userId()).isEqualTo(USER_UID);
+            assertThat(data.accessToken()).isEqualTo(ACCESS_TOKEN);
+            assertThat(data.refreshToken()).isEqualTo(REFRESH_TOKEN_VALUE);
+        }
+    }
+
+    @Nested
+    @DisplayName("nonce 바인딩")
+    class NonceBinding {
+
+        @Test
+        @DisplayName("콜백의 state로 회수한 nonce가 교환 코드에 바인딩된다")
+        void onSuccess_bindsNonceFromState() throws Exception {
+            // given
+            stubTokenIssue();
+            String state = "state-value";
+            String nonce = "browser-nonce";
+            given(nonceStore.consume(state)).willReturn(nonce);
+
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.setParameter("state", state);
+
+            // when
+            successHandler.onAuthenticationSuccess(
+                    request, new MockHttpServletResponse(), mockAuthentication(userWithUid(USER_UID)));
+
+            // then
+            ArgumentCaptor<OAuthExchangeData> captor = ArgumentCaptor.forClass(OAuthExchangeData.class);
+            then(exchangeCodeStore).should().issue(captor.capture());
+            assertThat(captor.getValue().nonce()).isEqualTo(nonce);
+        }
+
+        @Test
+        @DisplayName("state 파라미터가 없으면 nonce는 null로 바인딩된다")
+        void onSuccess_noState_bindsNullNonce() throws Exception {
+            // given
+            stubTokenIssue();
+
+            // when
+            successHandler.onAuthenticationSuccess(
+                    new MockHttpServletRequest(), new MockHttpServletResponse(), mockAuthentication(userWithUid(USER_UID)));
+
+            // then
+            ArgumentCaptor<OAuthExchangeData> captor = ArgumentCaptor.forClass(OAuthExchangeData.class);
+            then(exchangeCodeStore).should().issue(captor.capture());
+            assertThat(captor.getValue().nonce()).isNull();
         }
     }
 
@@ -126,14 +182,11 @@ class OAuth2AuthenticationSuccessHandlerTest {
         @DisplayName("최초 로그인 시 리프레시 토큰을 새로 저장한다")
         void firstLogin_savesNewRefreshToken() throws Exception {
             // given
-            User user = userWithUid(USER_UID);
-            given(jwtUtil.generateAccessToken(any())).willReturn(ACCESS_TOKEN);
-            given(jwtUtil.generateRefreshToken(any())).willReturn(REFRESH_TOKEN_VALUE);
-            given(refreshTokenRepository.findById(USER_UID)).willReturn(Optional.empty());
+            stubTokenIssue();
 
             // when
             successHandler.onAuthenticationSuccess(
-                    new MockHttpServletRequest(), new MockHttpServletResponse(), mockAuthentication(user));
+                    new MockHttpServletRequest(), new MockHttpServletResponse(), mockAuthentication(userWithUid(USER_UID)));
 
             // then
             then(refreshTokenRepository).should().save(any(RefreshToken.class));
@@ -149,6 +202,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
             given(jwtUtil.generateAccessToken(any())).willReturn(ACCESS_TOKEN);
             given(jwtUtil.generateRefreshToken(any())).willReturn(REFRESH_TOKEN_VALUE);
             given(refreshTokenRepository.findById(USER_UID)).willReturn(Optional.of(existingToken));
+            given(exchangeCodeStore.issue(any(OAuthExchangeData.class))).willReturn(EXCHANGE_CODE);
 
             // when
             successHandler.onAuthenticationSuccess(
@@ -169,9 +223,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
         void onSuccess_passesCorrectUserInfoToJwtUtil() throws Exception {
             // given
             User user = userWithUid(USER_UID);
-            given(jwtUtil.generateAccessToken(any())).willReturn(ACCESS_TOKEN);
-            given(jwtUtil.generateRefreshToken(any())).willReturn(REFRESH_TOKEN_VALUE);
-            given(refreshTokenRepository.findById(USER_UID)).willReturn(Optional.empty());
+            stubTokenIssue();
 
             // when
             successHandler.onAuthenticationSuccess(

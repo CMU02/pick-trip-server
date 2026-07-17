@@ -15,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.web.method.annotation.AuthenticationPrincipalArgumentResolver;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import travel_agency.pick_trip.domain.auth.dto.response.OAuthExchangeResponse;
 import travel_agency.pick_trip.domain.auth.dto.response.TokenRefreshResponse;
 import travel_agency.pick_trip.domain.auth.service.TokenService;
 import travel_agency.pick_trip.gloal.error.GlobalExceptionHandler;
@@ -58,6 +59,47 @@ class AuthControllerTest {
         given(claims.getSubject()).willReturn(USER_UID.toString());
         given(claims.get("role", String.class)).willReturn("USER");
         return JwtUserPrincipal.from(claims);
+    }
+
+    @Nested
+    @DisplayName("POST /api/v1/auth/oauth/exchange")
+    class OAuthExchange {
+
+        @Test
+        @DisplayName("유효한 code와 nonce로 요청하면 200과 토큰을 반환한다")
+        void validRequest_returns200WithTokens() throws Exception {
+            // given
+            given(tokenService.exchange(anyString(), anyString()))
+                    .willReturn(new OAuthExchangeResponse(ACCESS_TOKEN, REFRESH_TOKEN));
+
+            // when / then
+            mockMvc.perform(post("/api/v1/auth/oauth/exchange")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"code\": \"opaque-code\", \"nonce\": \"browser-nonce\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.accessToken").value(ACCESS_TOKEN))
+                    .andExpect(jsonPath("$.refreshToken").value(REFRESH_TOKEN));
+        }
+
+        @Test
+        @DisplayName("code가 빈 문자열이면 400을 반환한다")
+        void blankCode_returns400() throws Exception {
+            // when / then
+            mockMvc.perform(post("/api/v1/auth/oauth/exchange")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"code\": \"\", \"nonce\": \"browser-nonce\"}"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
+        @DisplayName("nonce가 빈 문자열이면 400을 반환한다")
+        void blankNonce_returns400() throws Exception {
+            // when / then
+            mockMvc.perform(post("/api/v1/auth/oauth/exchange")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"code\": \"opaque-code\", \"nonce\": \"\"}"))
+                    .andExpect(status().isBadRequest());
+        }
     }
 
     @Nested
