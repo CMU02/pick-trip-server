@@ -16,6 +16,9 @@ public class WebConfig {
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
+    @Value("${app.cors.allow-credentials:true}")
+    private boolean allowCredentials;
+
     /**
      * CORS 정책 단일 소스.
      * Spring Security 필터 체인(SecurityConfig의 http.cors())이 이 빈을 사용해 CORS를 처리한다.
@@ -31,8 +34,9 @@ public class WebConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOriginPatterns(origins);
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
-        configuration.setAllowedHeaders(List.of("*"));
-        configuration.setAllowCredentials(true);
+        // 실제로 필요한 Authorization/Content-Type 만 허용하고 나머지는 차단해 공격 표면을 축소한다.
+        configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuration.setAllowCredentials(allowCredentials);
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

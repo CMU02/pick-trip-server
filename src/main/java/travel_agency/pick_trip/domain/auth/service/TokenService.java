@@ -8,8 +8,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import travel_agency.pick_trip.domain.auth.dto.response.OAuthExchangeResponse;
 import travel_agency.pick_trip.domain.auth.dto.response.TokenRefreshResponse;
 import travel_agency.pick_trip.domain.auth.entity.RefreshToken;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthExchangeCodeStore;
+import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthExchangeData;
 import travel_agency.pick_trip.domain.auth.repository.RefreshTokenRepository;
 import travel_agency.pick_trip.domain.user.entity.User;
 import travel_agency.pick_trip.domain.user.repository.UserRepository;
@@ -18,6 +21,8 @@ import travel_agency.pick_trip.gloal.error.exception.AuthException;
 import travel_agency.pick_trip.gloal.jwt.JwtUserInfo;
 import travel_agency.pick_trip.gloal.jwt.JwtUtil;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -29,9 +34,30 @@ public class TokenService {
     private final JwtUtil jwtUtil;
     private final UserRepository userRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final OAuthExchangeCodeStore exchangeCodeStore;
 
     @Value("${jwt.refresh-token-expire-time}")
     private Long refreshTokenExpireTimeDays;
+
+    /**
+     * OAuth 일회용 교환 코드를 실제 토큰으로 교환한다.
+     *
+     * <p>코드는 1회성이며(회수 즉시 소멸), 코드에 바인딩된 nonce 가 요청 nonce 와 일치해야 한다.
+     * 코드가 없거나·만료·재사용이거나·nonce 가 불일치하면 {@link ErrorCode#AUTH_INVALID_EXCHANGE_CODE}
+     * (401)로 실패한다. 이로써 위조 콜백/재사용 코드/개시 브라우저 불일치를 차단한다.</p>
+     */
+    public OAuthExchangeResponse exchange(String code, String nonce) {
+        OAuthExchangeData data = exchangeCodeStore.consume(code)
+                .orElseThrow(() -> new AuthException(ErrorCode.AUTH_INVALID_EXCHANGE_CODE));
+
+        // 개시 브라우저 바인딩 검증: 코드에 묶인 nonce 와 프론트가 제출한 nonce 가 같아야 한다.
+        // nonce 미바인딩(null) 코드는 검증 불가로 간주해 거부한다.
+        if (data.nonce() == null || !constantTimeEquals(data.nonce(), nonce)) {
+            throw new AuthException(ErrorCode.AUTH_INVALID_EXCHANGE_CODE);
+        }
+
+        return new OAuthExchangeResponse(data.accessToken(), data.refreshToken());
+    }
 
     @Transactional
     public TokenRefreshResponse refresh(String refreshToken) {
@@ -68,6 +94,16 @@ public class TokenService {
     @Transactional
     public void logout(UUID userId) {
         refreshTokenRepository.deleteById(userId);
+    }
+
+    // 타이밍 공격을 피하기 위해 nonce 비교를 상수 시간으로 수행한다.
+    private boolean constantTimeEquals(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(
+                a.getBytes(StandardCharsets.UTF_8),
+                b.getBytes(StandardCharsets.UTF_8));
     }
 
     private void parseRefreshToken(String refreshToken) {
