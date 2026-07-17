@@ -12,6 +12,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
+import org.springframework.security.oauth2.core.AuthorizationGrantType;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMethod;
@@ -46,6 +51,19 @@ class ApiDocsMcpServiceTest {
         }
     }
 
+    private ClientRegistration registration(String registrationId, String clientName) {
+        return ClientRegistration.withRegistrationId(registrationId)
+                .clientId("test-client-id")
+                .clientName(clientName)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+                .authorizationUri("https://example.com/oauth/authorize")
+                .tokenUri("https://example.com/oauth/token")
+                .userInfoUri("https://example.com/userinfo")
+                .userNameAttributeName("id")
+                .build();
+    }
+
     private RequestMappingInfo info(String path, RequestMethod method) {
         RequestMappingInfo.BuilderConfiguration config = new RequestMappingInfo.BuilderConfiguration();
         config.setPatternParser(new PathPatternParser());
@@ -64,7 +82,11 @@ class ApiDocsMcpServiceTest {
                 info("/api/v1/samples/{id}", RequestMethod.GET), getOne,
                 info("/api/v1/samples", RequestMethod.POST), create));
 
-        service = new ApiDocsMcpService(handlerMapping);
+        ClientRegistrationRepository registrations = new InMemoryClientRegistrationRepository(
+                registration("kakao", "Kakao"), registration("google", "Google"));
+
+        service = new ApiDocsMcpService(handlerMapping, registrations);
+        ReflectionTestUtils.setField(service, "successRedirectUri", "http://localhost:3000/auth/callback");
     }
 
     @Test
@@ -116,6 +138,34 @@ class ApiDocsMcpServiceTest {
         assertThat(service.searchEndpoints("samples")).hasSize(2);
         assertThat(service.searchEndpoints("getone")).hasSize(1);
         assertThat(service.searchEndpoints("없는키워드")).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getSocialLoginGuide 는 등록된 공급자별 로그인 시작·콜백 경로를 반환한다")
+    void getSocialLoginGuide() {
+        ApiDocsMcpService.SocialLoginGuide guide = service.getSocialLoginGuide();
+
+        assertThat(guide.providers())
+                .extracting(ApiDocsMcpService.SocialLoginProvider::registrationId,
+                        ApiDocsMcpService.SocialLoginProvider::loginStartPath,
+                        ApiDocsMcpService.SocialLoginProvider::callbackPath)
+                .containsExactly(
+                        tuple("google", "/oauth2/authorization/google",
+                                "{baseUrl}/login/oauth2/code/{registrationId}"),
+                        tuple("kakao", "/oauth2/authorization/kakao",
+                                "{baseUrl}/login/oauth2/code/{registrationId}"));
+        assertThat(guide.successRedirect()).isEqualTo("http://localhost:3000/auth/callback");
+        assertThat(guide.flow()).isNotEmpty();
+    }
+
+    @Test
+    @DisplayName("소셜 로그인 경로는 Security 필터가 처리하므로 listEndpoints 에 잡히지 않는다")
+    void socialLoginPathsAreNotInHandlerMapping() {
+        // 이 사실 때문에 getSocialLoginGuide 가 필요하다. 훗날 컨트롤러로 바뀌면 이 테스트가 알려준다.
+        assertThat(service.listEndpoints())
+                .extracting(ApiDocsMcpService.EndpointInfo::path)
+                .noneMatch(path -> path.startsWith("/oauth2/authorization")
+                        || path.startsWith("/login/oauth2/code"));
     }
 
     @Test
