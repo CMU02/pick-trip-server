@@ -5,7 +5,8 @@ FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 COPY build/libs/*-SNAPSHOT.jar app.jar
 
-# RAM 909MB 인스턴스에 다른 서비스와 공존하므로 힙 상한을 건다.
+# 같은 인스턴스에 다른 서비스가 함께 뜨므로 힙 상한을 건다.
+# 비율은 컨테이너 메모리 제한(--memory) 기준이라 호스트가 커져도 힙이 따라 늘지 않는다.
 # 컨테이너 기본 TZ 는 UTC 라 JVM 레벨에서 KST 를 지정한다(alpine 에 tzdata 를 깔지 않기 위함).
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=40 -Duser.timezone=Asia/Seoul"
 
