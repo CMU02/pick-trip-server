@@ -32,6 +32,10 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-client'
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // 스키마 변경 이력 관리. ddl-auto 는 validate 를 유지하고 DDL 은 마이그레이션 스크립트로만 나간다.
+    // Boot 4 부터 자동설정이 spring-boot-flyway 모듈로 분리되어 flyway-core 만으로는 동작하지 않는다.
+    implementation 'org.springframework.boot:spring-boot-flyway'
+    implementation 'org.flywaydb:flyway-mysql'
     testImplementation platform("org.testcontainers:testcontainers-bom:$testcontainersVersion")
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'

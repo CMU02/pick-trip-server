@@ -6,6 +6,10 @@ spring:
     url: jdbc:mysql://${DB_URL:localhost}:${DB_PORT:3306}/${DB_SCHEMA:picktrip_test}?serverTimezone=Asia/Seoul
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:picktrip_test}
+  # 테스트는 ddl-auto: create 로 스키마를 직접 만들므로 Flyway 는 끈다.
+  flyway:
+    enabled: false
+
   jpa:
     hibernate:
       ddl-auto: create
