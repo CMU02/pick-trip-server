@@ -33,7 +33,7 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: create # 배포 시에는 Validate로 변경.
+      ddl-auto: validate # 배포 시에는 Validate로 변경.
     properties:
       hibernate:
         show_sql: false

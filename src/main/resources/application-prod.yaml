@@ -17,7 +17,9 @@ spring:
           kakao:
             client-id: ${KAKAO_CLIENT_ID}
             client-secret: ${KAKAO_CLIENT_SECRET_PASSWORD}
-
+  docker:
+    compose:
+      enabled: false
 
 public-data-portal:
   key:
