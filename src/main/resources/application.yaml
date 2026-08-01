@@ -31,9 +31,15 @@ spring:
               - profile_nickname
               - profile_image
 
+  # 스키마는 Flyway 로만 변경한다. 컬럼 추가 시 db/migration 에 V{n}__설명.sql 을 추가하면 부팅 시 자동 적용된다.
+  # 기존 RDS 에는 이미 테이블이 있으므로 baseline 을 허용하고, 버전 0 으로 잡아 V1 부터 실행되게 한다.
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
+
   jpa:
     hibernate:
-      ddl-auto: validate # 배포 시에는 Validate로 변경.
+      ddl-auto: validate # Flyway 가 스키마를 관리하므로 검증만 한다. update/create 로 바꾸지 않는다.
     properties:
       hibernate:
         show_sql: false

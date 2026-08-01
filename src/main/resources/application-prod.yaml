@@ -21,6 +21,11 @@ spring:
     compose:
       enabled: false
 
+# Cloudflare 와 nginx 를 거치므로 X-Forwarded-* 를 신뢰해야 한다.
+# 이게 없으면 {baseUrl} 이 http 로 잡혀 OAuth redirect_uri mismatch 가 난다.
+server:
+  forward-headers-strategy: NATIVE
+
 public-data-portal:
   key:
     encode: ${PUBLIC_DATA_PORTAL_KEY}
@@ -32,7 +37,7 @@ jwt:
 
 app:
   cors:
-    allowed-origins: http://localhost:3000
+    allowed-origins: https://pick-trip.app
     # 자격 증명(쿠키) 교차 오리진 허용 여부. 프론트는 Bearer 헤더를 쓰므로 필요 시에만 켠다.
     allow-credentials: true
   oauth2:
@@ -45,6 +50,6 @@ app:
     nonce-ttl-seconds: 300
 
 tour-api:
-  base-url: base-url
-  photo-base-url: https://apis.data.go.kr/B551011/PhotoGalleryService1
+  base-url: ${BASE_URL}
+  photo-base-url: ${PHOTO_BASE_URL}
   service-key: ${PUBLIC_DATA_PORTAL_KEY}
