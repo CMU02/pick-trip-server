@@ -48,6 +48,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
 
     private static final UUID USER_UID = UUID.randomUUID();
     private static final String REDIRECT_URI = "http://localhost:3000/auth/callback";
+    private static final String APP_REDIRECT_URI = "picktrip://auth/callback";
     private static final String ACCESS_TOKEN = "access-token";
     private static final String REFRESH_TOKEN_VALUE = "refresh-token";
     private static final String EXCHANGE_CODE = "opaque-exchange-code";
@@ -56,6 +57,7 @@ class OAuth2AuthenticationSuccessHandlerTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(successHandler, "redirectUri", REDIRECT_URI);
+        ReflectionTestUtils.setField(successHandler, "appRedirectUri", APP_REDIRECT_URI);
         ReflectionTestUtils.setField(successHandler, "refreshTokenExpireTimeDays", REFRESH_EXPIRE_DAYS);
     }
 
@@ -128,6 +130,60 @@ class OAuth2AuthenticationSuccessHandlerTest {
             assertThat(data.userId()).isEqualTo(USER_UID);
             assertThat(data.accessToken()).isEqualTo(ACCESS_TOKEN);
             assertThat(data.refreshToken()).isEqualTo(REFRESH_TOKEN_VALUE);
+        }
+    }
+
+    @Nested
+    @DisplayName("클라이언트별 콜백 분기")
+    class RedirectTarget {
+
+        @Test
+        @DisplayName("앱에서 시작한 로그인(state에 .app 표식)은 커스텀 스킴으로 리다이렉트한다")
+        void appClient_redirectsToCustomScheme() throws Exception {
+            // given
+            stubTokenIssue();
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.setParameter("state", "random-state" + NonceCapturingAuthorizationRequestResolver.APP_STATE_SUFFIX);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // when
+            successHandler.onAuthenticationSuccess(request, response, mockAuthentication(userWithUid(USER_UID)));
+
+            // then
+            assertThat(response.getRedirectedUrl()).isEqualTo(APP_REDIRECT_URI + "?code=" + EXCHANGE_CODE);
+        }
+
+        @Test
+        @DisplayName("표식 없는 state는 웹 콜백으로 리다이렉트한다")
+        void webClient_redirectsToWebCallback() throws Exception {
+            // given
+            stubTokenIssue();
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.setParameter("state", "random-state");
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // when
+            successHandler.onAuthenticationSuccess(request, response, mockAuthentication(userWithUid(USER_UID)));
+
+            // then
+            assertThat(response.getRedirectedUrl()).startsWith(REDIRECT_URI + "?");
+        }
+
+        @Test
+        @DisplayName("앱 콜백이 설정되지 않은 환경에서는 웹 콜백으로 폴백한다")
+        void appClient_withoutAppRedirectUri_fallsBackToWeb() throws Exception {
+            // given
+            stubTokenIssue();
+            ReflectionTestUtils.setField(successHandler, "appRedirectUri", "");
+            MockHttpServletRequest request = new MockHttpServletRequest();
+            request.setParameter("state", "random-state" + NonceCapturingAuthorizationRequestResolver.APP_STATE_SUFFIX);
+            MockHttpServletResponse response = new MockHttpServletResponse();
+
+            // when
+            successHandler.onAuthenticationSuccess(request, response, mockAuthentication(userWithUid(USER_UID)));
+
+            // then
+            assertThat(response.getRedirectedUrl()).startsWith(REDIRECT_URI + "?");
         }
     }
 

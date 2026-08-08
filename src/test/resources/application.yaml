@@ -48,6 +48,7 @@ app:
     allowed-origins: http://localhost:3000
   oauth2:
     redirect-uri: http://localhost:3000/auth/callback
+    app-redirect-uri: picktrip://auth/callback
 
 tour-api:
   base-url: http://localhost

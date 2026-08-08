@@ -11,7 +11,11 @@ import org.springframework.security.config.oauth2.client.CommonOAuth2Provider;
 import org.springframework.security.oauth2.client.registration.ClientRegistration;
 import org.springframework.security.oauth2.client.registration.InMemoryClientRegistrationRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
+import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
 import travel_agency.pick_trip.domain.auth.oauth2.exchange.OAuthNonceStore;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -69,6 +73,55 @@ class NonceCapturingAuthorizationRequestResolverTest {
         // then
         assertThat(result).isNotNull();
         then(nonceStore).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("client=app 이면 state에 앱 표식이 붙고 인가요청 URI도 그 state로 다시 만들어진다")
+    void resolve_appClient_marksState() {
+        // given
+        MockHttpServletRequest request = authorizationRequest();
+        request.setParameter("client", "app");
+
+        // when
+        OAuth2AuthorizationRequest result = resolver.resolve(request);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.getState())
+                .endsWith(NonceCapturingAuthorizationRequestResolver.APP_STATE_SUFFIX);
+        // 프로바이더로 보내는 URI 의 state 가 갱신되지 않으면 콜백에서 state 검증이 깨진다.
+        String stateInUri = UriComponentsBuilder.fromUriString(result.getAuthorizationRequestUri())
+                .build().getQueryParams().getFirst("state");
+        assertThat(UriUtils.decode(stateInUri, StandardCharsets.UTF_8)).isEqualTo(result.getState());
+    }
+
+    @Test
+    @DisplayName("client=app 이면 nonce는 표식이 붙은 state에 묶여 저장된다")
+    void resolve_appClientWithNonce_storesNonceKeyedByMarkedState() {
+        // given
+        MockHttpServletRequest request = authorizationRequest();
+        request.setParameter("client", "app");
+        request.setParameter("nonce", "browser-nonce");
+
+        // when
+        OAuth2AuthorizationRequest result = resolver.resolve(request);
+
+        // then
+        then(nonceStore).should().store(eq(result.getState()), eq("browser-nonce"));
+    }
+
+    @Test
+    @DisplayName("client 파라미터가 없으면 state는 그대로 둔다")
+    void resolve_withoutClient_keepsState() {
+        // given
+        MockHttpServletRequest request = authorizationRequest();
+
+        // when
+        OAuth2AuthorizationRequest result = resolver.resolve(request);
+
+        // then
+        assertThat(result.getState())
+                .doesNotEndWith(NonceCapturingAuthorizationRequestResolver.APP_STATE_SUFFIX);
     }
 
     @Test
