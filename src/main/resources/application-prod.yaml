@@ -41,6 +41,8 @@ app:
     # 자격 증명(쿠키) 교차 오리진 허용 여부. 프론트는 Bearer 헤더를 쓰므로 필요 시에만 켠다.
     allow-credentials: true
   oauth2:
+    # 웹 클라이언트 콜백. 웹 프론트 도메인(pick-trip.app)이며, 백엔드(api.pick-trip.app)가 아니다.
+    # allowed-origins 와 같은 오리진이어야 하고, apex 에 A 레코드가 붙기 전까지는 NXDOMAIN 이 난다.
     redirect-uri: ${OAUTH2_REDIRECT_URI}
     # 운영은 HTTPS 이므로 인가요청 쿠키에 Secure 를 강제한다.
     cookie-secure: true

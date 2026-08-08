@@ -64,3 +64,10 @@ spring:
           엔드포인트 목록·상세 스키마·공통 에러 계약을 조회하세요.
         capabilities:
           tool: true
+
+app:
+  oauth2:
+    # 앱(모바일)이 client=app 으로 시작한 로그인의 최종 콜백. 커스텀 스킴이어야 인앱 브라우저가 닫히고
+    # 앱이 code 를 받는다. 환경과 무관한 고정값이라 프로필별 파일이 아닌 여기에 둔다.
+    # Expo Go 로 테스트할 때만 OAUTH2_APP_REDIRECT_URI 로 exp://<host>/--/auth/callback 을 주입한다.
+    app-redirect-uri: ${OAUTH2_APP_REDIRECT_URI:picktrip://auth/callback}

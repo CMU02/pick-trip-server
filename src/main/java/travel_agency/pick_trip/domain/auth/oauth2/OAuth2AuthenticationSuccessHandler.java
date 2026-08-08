@@ -40,8 +40,16 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     private final OAuthExchangeCodeStore exchangeCodeStore;
     private final OAuthNonceStore nonceStore;
 
+    /** 웹 클라이언트 콜백. 실제 서비스 중인 도메인이어야 한다. */
     @Value("${app.oauth2.redirect-uri}")
     private String redirectUri;
+
+    /**
+     * 앱(모바일) 클라이언트 콜백. 커스텀 스킴이어야 인앱 브라우저 세션이 닫히고 앱이 code 를 받는다.
+     * 값이 비어 있으면 웹 콜백으로 폴백한다.
+     */
+    @Value("${app.oauth2.app-redirect-uri:}")
+    private String appRedirectUri;
 
     @Value("${jwt.refresh-token-expire-time}")
     private Long refreshTokenExpireTimeDays;
@@ -78,10 +86,25 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
         String code = exchangeCodeStore.issue(
                 new OAuthExchangeData(user.getUid(), accessToken, newRefreshToken, nonce));
 
-        String targetUrl = UriComponentsBuilder.fromUriString(redirectUri)
+        String targetUrl = UriComponentsBuilder.fromUriString(resolveRedirectUri(state))
                 .queryParam("code", code)
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
+    }
+
+    /**
+     * 로그인을 시작한 클라이언트에 맞는 콜백을 고른다.
+     *
+     * <p>앱은 인가요청 시 {@code client=app} 을 보내고, 그 표식이 state 접미사로 콜백까지 왕복해 온다.
+     * 웹 콜백(https 주소)으로 돌려보내면 브라우저에 머물러 앱이 code 를 받지 못하므로 반드시 분기해야 한다.</p>
+     */
+    private String resolveRedirectUri(String state) {
+        boolean fromApp = state != null
+                && state.endsWith(NonceCapturingAuthorizationRequestResolver.APP_STATE_SUFFIX);
+        if (fromApp && appRedirectUri != null && !appRedirectUri.isBlank()) {
+            return appRedirectUri;
+        }
+        return redirectUri;
     }
 }
