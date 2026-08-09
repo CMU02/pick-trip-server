@@ -3,6 +3,7 @@ package travel_agency.pick_trip.domain.favorite.service;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import travel_agency.pick_trip.domain.favorite.dto.request.AddFavoriteRequest;
@@ -46,7 +47,11 @@ public class FavoriteService {
                 .indoor(request.indoor())
                 .region(request.region())
                 .build();
-        return FavoriteResponse.from(favoriteRepository.save(favorite));
+        try {
+            return FavoriteResponse.from(favoriteRepository.save(favorite));
+        } catch (DataIntegrityViolationException e) {
+            throw new FavoriteException(ErrorCode.FAVORITE_DUPLICATE);
+        }
     }
 
     @Transactional

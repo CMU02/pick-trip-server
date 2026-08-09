@@ -53,7 +53,7 @@ public class Favorite {
     @Column(nullable = false, length = 200)
     private String title;
 
-    @Column(nullable = false, length = 500)
+    @Column(length = 500)
     private String address;
 
     @Column(name = "first_image", length = 500)

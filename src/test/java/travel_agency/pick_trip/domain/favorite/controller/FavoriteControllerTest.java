@@ -93,6 +93,30 @@ class FavoriteControllerTest {
             assertThat(result.getBody()).isNotNull();
             assertThat(result.getBody().contentId()).isEqualTo("126508");
         }
+
+        @Test
+        @DisplayName("address가 없어도(null) 201과 추가된 항목을 반환한다")
+        void addFavorite_withoutAddress_returns201() {
+            // given
+            AddFavoriteRequest request = new AddFavoriteRequest(
+                    "302000", "지리산 둘레길", null, null,
+                    null, null, null, Region.HADONG
+            );
+            FavoriteResponse expected = new FavoriteResponse(
+                    UUID.randomUUID(), "302000", "지리산 둘레길", null, null,
+                    null, null, null, Region.HADONG, LocalDateTime.now()
+            );
+            given(favoriteService.addFavorite(USER_UID, request)).willReturn(expected);
+
+            // when
+            ResponseEntity<FavoriteResponse> result = favoriteController.addFavorite(principal(), request);
+
+            // then
+            assertThat(result.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+            assertThat(result.getBody()).isNotNull();
+            assertThat(result.getBody().contentId()).isEqualTo("302000");
+            assertThat(result.getBody().address()).isNull();
+        }
     }
 
     @Nested

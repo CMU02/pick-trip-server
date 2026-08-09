@@ -18,6 +18,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.favorite.dto.request.AddFavoriteRequest;
 import travel_agency.pick_trip.domain.favorite.dto.response.FavoriteResponse;
@@ -125,6 +126,44 @@ class FavoriteServiceTest {
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.FAVORITE_DUPLICATE);
             verify(favoriteRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("사전 중복 체크를 통과했지만 동시 요청으로 저장 시 unique constraint를 위반하면 FAVORITE_DUPLICATE 예외를 던진다")
+        void concurrentDuplicate_savesThrowsDataIntegrityViolation_throwsFavoriteDuplicateException() {
+            // given
+            given(favoriteRepository.existsByUserIdAndContentId(USER_ID, "126508")).willReturn(false);
+            given(favoriteRepository.save(any(Favorite.class)))
+                    .willThrow(new DataIntegrityViolationException("uk_favorites_user_content violated"));
+
+            // when
+            ThrowableAssert.ThrowingCallable action = () -> favoriteService.addFavorite(USER_ID, request);
+
+            // then
+            assertThatThrownBy(action)
+                    .isInstanceOf(PickTripException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.FAVORITE_DUPLICATE);
+        }
+
+        @Test
+        @DisplayName("address가 없어도(null) 찜을 추가한다")
+        void nullAddress_addsFavorite() {
+            // given
+            AddFavoriteRequest requestWithoutAddress = new AddFavoriteRequest(
+                    "302000", "지리산 둘레길", null, null,
+                    null, null, null, Region.HADONG
+            );
+            given(favoriteRepository.existsByUserIdAndContentId(USER_ID, "302000")).willReturn(false);
+            given(favoriteRepository.save(any(Favorite.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+            // when
+            FavoriteResponse response = favoriteService.addFavorite(USER_ID, requestWithoutAddress);
+
+            // then
+            assertThat(response.contentId()).isEqualTo("302000");
+            assertThat(response.title()).isEqualTo("지리산 둘레길");
+            assertThat(response.address()).isNull();
         }
     }
 
