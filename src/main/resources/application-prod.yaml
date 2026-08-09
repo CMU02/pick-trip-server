@@ -17,7 +17,14 @@ spring:
           kakao:
             client-id: ${KAKAO_CLIENT_ID}
             client-secret: ${KAKAO_CLIENT_SECRET_PASSWORD}
+  docker:
+    compose:
+      enabled: false
 
+# Cloudflare 와 nginx 를 거치므로 X-Forwarded-* 를 신뢰해야 한다.
+# 이게 없으면 {baseUrl} 이 http 로 잡혀 OAuth redirect_uri mismatch 가 난다.
+server:
+  forward-headers-strategy: NATIVE
 
 public-data-portal:
   key:
@@ -30,10 +37,16 @@ jwt:
 
 app:
   cors:
-    allowed-origins: http://localhost:3000
+    allowed-origins: https://pick-trip.app
     # 자격 증명(쿠키) 교차 오리진 허용 여부. 프론트는 Bearer 헤더를 쓰므로 필요 시에만 켠다.
     allow-credentials: true
+  share:
+    # 공유 링크 접두사. 뒤에 /{토큰} 이 붙어 클라이언트가 그대로 복사·전달한다.
+    # 도메인은 환경 변수로 주입한다. 웹 공유 페이지가 분리되면 이 값만 교체하면 된다.
+    link-base-url: ${SHARE_LINK_BASE_URL}
   oauth2:
+    # 웹 클라이언트 콜백. 웹 프론트 도메인(pick-trip.app)이며, 백엔드(api.pick-trip.app)가 아니다.
+    # allowed-origins 와 같은 오리진이어야 하고, apex 에 A 레코드가 붙기 전까지는 NXDOMAIN 이 난다.
     redirect-uri: ${OAUTH2_REDIRECT_URI}
     # 운영은 HTTPS 이므로 인가요청 쿠키에 Secure 를 강제한다.
     cookie-secure: true
@@ -43,6 +56,6 @@ app:
     nonce-ttl-seconds: 300
 
 tour-api:
-  base-url: base-url
-  photo-base-url: https://apis.data.go.kr/B551011/PhotoGalleryService1
+  base-url: ${BASE_URL}
+  photo-base-url: ${PHOTO_BASE_URL}
   service-key: ${PUBLIC_DATA_PORTAL_KEY}

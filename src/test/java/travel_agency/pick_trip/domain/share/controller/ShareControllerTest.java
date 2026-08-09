@@ -50,7 +50,8 @@ class ShareControllerTest {
         void createShare_returns201() {
             // given
             String token = "abc123def456";
-            ShareCreateResponse expected = new ShareCreateResponse(token, "/api/v1/share/" + token);
+            String shareUrl = "https://example.test/api/v1/share/" + token;
+            ShareCreateResponse expected = new ShareCreateResponse(token, shareUrl);
             given(shareService.createShare(USER_UID, ITINERARY_ID)).willReturn(expected);
 
             // when
@@ -60,7 +61,7 @@ class ShareControllerTest {
             assertThat(result.getStatusCode()).isEqualTo(HttpStatus.CREATED);
             assertThat(result.getBody()).isNotNull();
             assertThat(result.getBody().token()).isEqualTo(token);
-            assertThat(result.getBody().shareUrl()).isEqualTo("/api/v1/share/" + token);
+            assertThat(result.getBody().shareUrl()).isEqualTo(shareUrl);
         }
     }
 

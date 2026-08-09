@@ -9,6 +9,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import travel_agency.pick_trip.gloal.error.exception.PickTripException;
 
 @Slf4j
@@ -51,6 +52,19 @@ public class GlobalExceptionHandler {
         log.warn("[{}] VALIDATION_FAILED - {}", request.getAttribute("traceId"), e.getMessage());
         return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.getStatus())
                 .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED, (String) request.getAttribute("traceId")));
+    }
+
+    /**
+     * 매핑되지 않은 경로 요청. 취약점 스캐너가 {@code /.env}, {@code /.git/HEAD} 같은 경로를
+     * 끊임없이 긁기 때문에 500 + 스택트레이스로 처리하면 로그가 폭증한다. 서버 결함이 아니므로
+     * 404 로 응답하고 한 줄만 남긴다.
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleNoResourceFound(
+            NoResourceFoundException e, HttpServletRequest request) {
+        log.debug("[{}] RESOURCE_NOT_FOUND - {}", request.getAttribute("traceId"), e.getResourcePath());
+        return ResponseEntity.status(ErrorCode.RESOURCE_NOT_FOUND.getStatus())
+                .body(ErrorResponse.of(ErrorCode.RESOURCE_NOT_FOUND, (String) request.getAttribute("traceId")));
     }
 
     @ExceptionHandler(Exception.class)

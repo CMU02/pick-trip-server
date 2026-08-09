@@ -6,6 +6,10 @@ spring:
     url: jdbc:mysql://${DB_URL:localhost}:${DB_PORT:3306}/${DB_SCHEMA:picktrip_test}?serverTimezone=Asia/Seoul
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:picktrip_test}
+  # 테스트는 ddl-auto: create 로 스키마를 직접 만들므로 Flyway 는 끈다.
+  flyway:
+    enabled: false
+
   jpa:
     hibernate:
       ddl-auto: create
@@ -14,6 +18,7 @@ spring:
         show_sql: false
         format_sql: false
         dialect: org.hibernate.dialect.MySQLDialect
+        default_batch_fetch_size: 100
   security:
     oauth2:
       client:
@@ -40,10 +45,13 @@ kakao:
   redirect-uri: http://localhost:8080/callback
 
 app:
+  share:
+    link-base-url: http://localhost:8080/api/v1/share
   cors:
     allowed-origins: http://localhost:3000
   oauth2:
     redirect-uri: http://localhost:3000/auth/callback
+    app-redirect-uri: picktrip://auth/callback
 
 tour-api:
   base-url: http://localhost

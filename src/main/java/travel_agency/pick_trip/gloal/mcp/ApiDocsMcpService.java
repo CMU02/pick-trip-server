@@ -102,10 +102,14 @@ public class ApiDocsMcpService {
         providers.sort(Comparator.comparing(SocialLoginProvider::registrationId));
 
         List<String> flow = List.of(
-                "1. 클라이언트를 loginStartPath 로 이동시킨다(fetch/XHR 이 아니라 브라우저 이동이어야 한다).",
+                "1. 클라이언트를 loginStartPath 로 이동시킨다(fetch/XHR 이 아니라 브라우저 이동이어야 한다)."
+                        + " 앱(모바일)은 반드시 ?client=app 을 붙여야 커스텀 스킴(picktrip://auth/callback)으로 돌아온다."
+                        + " 개시 브라우저 바인딩용 ?nonce=<랜덤값> 도 함께 붙인다.",
                 "2. 공급자 로그인·동의 후 callbackPath 로 콜백되며, 서버가 토큰 교환과 사용자 저장을 처리한다.",
-                "3. 서버가 successRedirect 로 ?accessToken=...&refreshToken=... 을 붙여 리다이렉트한다.",
-                "4. 클라이언트는 두 토큰을 저장한 뒤 주소창의 쿼리를 제거한다(history.replaceState).",
+                "3. 서버가 콜백 주소(웹은 successRedirect, 앱은 커스텀 스킴)로 ?code=<일회용 교환 코드> 를 붙여"
+                        + " 리다이렉트한다. 토큰 자체는 URL 에 실리지 않는다.",
+                "4. 클라이언트는 POST /api/v1/auth/oauth/exchange 로 code(와 1번의 nonce)를 제출해"
+                        + " accessToken / refreshToken 을 회수하고, 주소창의 쿼리를 제거한다(history.replaceState).",
                 "5. 이후 요청은 Authorization: Bearer <accessToken> 헤더를 사용하고,"
                         + " 만료 시 POST /api/v1/auth/token/refresh 로 재발급받는다.");
 
