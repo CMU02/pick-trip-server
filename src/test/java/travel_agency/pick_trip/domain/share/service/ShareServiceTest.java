@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -41,6 +42,12 @@ class ShareServiceTest {
 
     private static final UUID USER_ID = UUID.randomUUID();
     private static final UUID ITINERARY_ID = UUID.randomUUID();
+    private static final String LINK_BASE_URL = "https://example.test/api/v1/share";
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(shareService, "shareLinkBaseUrl", LINK_BASE_URL);
+    }
 
     private Itinerary itineraryOwnedBy(UUID ownerId) {
         Itinerary itinerary = Itinerary.builder()
@@ -75,7 +82,7 @@ class ShareServiceTest {
             ShareCreateResponse response = shareService.createShare(USER_ID, ITINERARY_ID);
 
             assertThat(response.token()).isNotBlank();
-            assertThat(response.shareUrl()).isEqualTo("/api/v1/share/" + response.token());
+            assertThat(response.shareUrl()).isEqualTo(LINK_BASE_URL + "/" + response.token());
             verify(shareTokenRepository).save(any(ShareToken.class));
         }
 
