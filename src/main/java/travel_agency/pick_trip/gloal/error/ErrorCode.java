@@ -37,6 +37,10 @@ public enum ErrorCode {
     BASKET_ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "바구니 항목을 찾을 수 없습니다."),
     BASKET_ITEM_DUPLICATE(HttpStatus.CONFLICT, "이미 바구니에 담은 콘텐츠입니다."),
 
+    // Favorite
+    FAVORITE_NOT_FOUND(HttpStatus.NOT_FOUND, "찜한 콘텐츠를 찾을 수 없습니다."),
+    FAVORITE_DUPLICATE(HttpStatus.CONFLICT, "이미 찜한 콘텐츠입니다."),
+
     // Share
     SHARE_ITINERARY_NOT_FOUND(HttpStatus.NOT_FOUND, "공유된 일정을 찾을 수 없습니다."),
     SHARE_FORBIDDEN(HttpStatus.FORBIDDEN, "접근 권한이 없습니다."),

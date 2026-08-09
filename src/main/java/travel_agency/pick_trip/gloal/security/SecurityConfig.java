@@ -70,6 +70,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/share/**").permitAll()
                         // Basket - 여행 바구니는 로그인 필요
                         .requestMatchers("/api/v1/baskets/**").authenticated()
+                        // Favorite - 찜하기는 로그인 필요
+                        .requestMatchers("/api/v1/favorites/**").authenticated()
                         // Itinerary - 일정 생성·저장·조회·수정·공유 생성은 로그인 필요
                         .requestMatchers("/api/v1/itineraries/**").authenticated()
                         // 그 외 /api/v1/** 는 아직 개발 중이라 잠시 허용한다.
