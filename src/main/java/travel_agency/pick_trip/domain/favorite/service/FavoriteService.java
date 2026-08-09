@@ -48,7 +48,7 @@ public class FavoriteService {
                 .region(request.region())
                 .build();
         try {
-            return FavoriteResponse.from(favoriteRepository.save(favorite));
+            return FavoriteResponse.from(favoriteRepository.saveAndFlush(favorite));
         } catch (DataIntegrityViolationException e) {
             throw new FavoriteException(ErrorCode.FAVORITE_DUPLICATE);
         }

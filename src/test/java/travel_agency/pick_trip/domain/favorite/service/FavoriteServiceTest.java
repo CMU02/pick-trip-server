@@ -100,7 +100,7 @@ class FavoriteServiceTest {
         void noDuplicate_addsFavorite() {
             // given
             given(favoriteRepository.existsByUserIdAndContentId(USER_ID, "126508")).willReturn(false);
-            given(favoriteRepository.save(any(Favorite.class))).willAnswer(invocation -> invocation.getArgument(0));
+            given(favoriteRepository.saveAndFlush(any(Favorite.class))).willAnswer(invocation -> invocation.getArgument(0));
 
             // when
             FavoriteResponse response = favoriteService.addFavorite(USER_ID, request);
@@ -125,7 +125,7 @@ class FavoriteServiceTest {
                     .isInstanceOf(PickTripException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.FAVORITE_DUPLICATE);
-            verify(favoriteRepository, never()).save(any());
+            verify(favoriteRepository, never()).saveAndFlush(any());
         }
 
         @Test
@@ -133,7 +133,7 @@ class FavoriteServiceTest {
         void concurrentDuplicate_savesThrowsDataIntegrityViolation_throwsFavoriteDuplicateException() {
             // given
             given(favoriteRepository.existsByUserIdAndContentId(USER_ID, "126508")).willReturn(false);
-            given(favoriteRepository.save(any(Favorite.class)))
+            given(favoriteRepository.saveAndFlush(any(Favorite.class)))
                     .willThrow(new DataIntegrityViolationException("uk_favorites_user_content violated"));
 
             // when
@@ -155,7 +155,7 @@ class FavoriteServiceTest {
                     null, null, null, Region.HADONG
             );
             given(favoriteRepository.existsByUserIdAndContentId(USER_ID, "302000")).willReturn(false);
-            given(favoriteRepository.save(any(Favorite.class))).willAnswer(invocation -> invocation.getArgument(0));
+            given(favoriteRepository.saveAndFlush(any(Favorite.class))).willAnswer(invocation -> invocation.getArgument(0));
 
             // when
             FavoriteResponse response = favoriteService.addFavorite(USER_ID, requestWithoutAddress);
