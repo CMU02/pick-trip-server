@@ -35,6 +35,10 @@ app:
     allowed-origins: http://localhost:3000
     # 자격 증명(쿠키) 교차 오리진 허용 여부. 프론트는 Bearer 헤더를 쓰므로 필요 시에만 켠다.
     allow-credentials: true
+  share:
+    # 공유 링크 접두사. 뒤에 /{토큰} 이 붙어 클라이언트가 그대로 복사·전달한다.
+    # 도메인은 환경 변수로 주입한다. 웹 공유 페이지가 분리되면 이 값만 교체하면 된다.
+    link-base-url: ${SHARE_LINK_BASE_URL}
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
     # 운영은 HTTPS 이므로 인가요청 쿠키에 Secure 를 강제한다.
