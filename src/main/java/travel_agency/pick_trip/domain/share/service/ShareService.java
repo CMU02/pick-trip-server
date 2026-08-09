@@ -2,6 +2,7 @@ package travel_agency.pick_trip.domain.share.service;
 
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import travel_agency.pick_trip.domain.itinerary.entity.Itinerary;
@@ -25,6 +26,10 @@ public class ShareService {
     private final ShareTokenRepository shareTokenRepository;
     private final ItineraryRepository itineraryRepository;
 
+    /** 클라이언트가 그대로 복사·전달할 수 있는 공유 링크의 접두사. 배포 환경마다 다르므로 설정으로 주입한다. */
+    @Value("${app.share.link-base-url}")
+    private String shareLinkBaseUrl;
+
     /**
      * 일정의 공유 링크를 생성한다. 이미 활성 토큰이 있으면 재사용한다(멱등).
      */
@@ -36,7 +41,7 @@ public class ShareService {
                         .itineraryId(itinerary.getItineraryId())
                         .token(generateToken())
                         .build()));
-        return ShareCreateResponse.from(shareToken);
+        return ShareCreateResponse.from(shareToken, shareLinkBaseUrl);
     }
 
     /**

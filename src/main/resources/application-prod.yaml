@@ -40,6 +40,10 @@ app:
     allowed-origins: https://pick-trip.app
     # 자격 증명(쿠키) 교차 오리진 허용 여부. 프론트는 Bearer 헤더를 쓰므로 필요 시에만 켠다.
     allow-credentials: true
+  share:
+    # 공유 링크 접두사. 뒤에 /{토큰} 이 붙어 클라이언트가 그대로 복사·전달한다.
+    # 도메인은 환경 변수로 주입한다. 웹 공유 페이지가 분리되면 이 값만 교체하면 된다.
+    link-base-url: ${SHARE_LINK_BASE_URL}
   oauth2:
     # 웹 클라이언트 콜백. 웹 프론트 도메인(pick-trip.app)이며, 백엔드(api.pick-trip.app)가 아니다.
     # allowed-origins 와 같은 오리진이어야 하고, apex 에 A 레코드가 붙기 전까지는 NXDOMAIN 이 난다.
