@@ -16,8 +16,9 @@ import travel_agency.pick_trip.domain.region.Region;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * duration 누락이 바구니에 저장된 값을 조용히 지우고, 그 실패가 한참 뒤 일정 생성에서야
- * 드러나던 문제(#43)의 재발 방지 테스트.
+ * 부분 갱신이므로 {@code null} 은 "변경 없음"으로 허용하되, 값을 보냈다면 검증한다.
+ * 누락된 duration 이 저장된 값을 지우던 문제(#43)는 {@code Basket.updateConditions} 쪽에서
+ * 막으며, 그 동작은 {@code BasketTest} 가 검증한다.
  */
 @DisplayName("UpdateBasketConditionsRequest")
 class UpdateBasketConditionsRequestTest {
@@ -47,8 +48,8 @@ class UpdateBasketConditionsRequestTest {
     }
 
     @Test
-    @DisplayName("duration 이 null 이면 검증에 실패한다.")
-    void rejectNullDuration() {
+    @DisplayName("duration 이 null 이면 변경 없음이므로 검증을 통과한다.")
+    void acceptNullDuration() {
         // given
         Integer duration = null;
 
@@ -56,10 +57,7 @@ class UpdateBasketConditionsRequestTest {
         Set<ConstraintViolation<UpdateBasketConditionsRequest>> violations = validateDuration(duration);
 
         // then
-        assertThat(violations)
-                .isNotEmpty()
-                .extracting(v -> v.getPropertyPath().toString())
-                .contains("duration");
+        assertThat(violations).isEmpty();
     }
 
     @Test
