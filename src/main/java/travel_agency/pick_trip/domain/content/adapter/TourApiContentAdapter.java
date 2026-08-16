@@ -48,6 +48,9 @@ public class TourApiContentAdapter {
                         request.size()
                 );
             }
+            if (raw.isError()) {
+                throw new ContentException(ErrorCode.CONTENT_PROVIDER_FAILED);
+            }
             return mapper.toListResponse(raw, request.page(), request.size(), region);
         } catch (FeignException e) {
             throw new ContentException(ErrorCode.CONTENT_PROVIDER_FAILED);
@@ -63,6 +66,10 @@ public class TourApiContentAdapter {
     public ContentDetailResponse fetchDetail(String contentId) {
         try {
             TourApiDetailCommonResponse common = tourApiClient.getDetailCommon(contentId);
+
+            if (common.isError()) {
+                throw new ContentException(ErrorCode.CONTENT_PROVIDER_FAILED);
+            }
 
             boolean isEmpty = common.response() == null
                     || common.response().body() == null

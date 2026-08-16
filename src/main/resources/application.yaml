@@ -37,7 +37,7 @@ spring:
   cache:
     cache-names: contentDetail
     caffeine:
-      spec: expireAfterWrite=24h,maximumSize=500
+      spec: expireAfterWrite=24h,maximumSize=500,recordStats
 
   # 스키마는 Flyway 로만 변경한다. 컬럼 추가 시 db/migration 에 V{n}__설명.sql 을 추가하면 부팅 시 자동 적용된다.
   # 기존 RDS 에는 이미 테이블이 있으므로 baseline 을 허용하고, 버전 0 으로 잡아 V1 부터 실행되게 한다.
