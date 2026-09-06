@@ -30,6 +30,7 @@ import travel_agency.pick_trip.domain.content.repository.TravelContentRepository
 import travel_agency.pick_trip.domain.content.entity.CongestionLevel;
 import travel_agency.pick_trip.domain.content.service.CongestionService;
 import travel_agency.pick_trip.domain.content.service.ContentService;
+import travel_agency.pick_trip.domain.content.service.RoadMatrixResolver;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
@@ -46,8 +47,11 @@ import travel_agency.pick_trip.domain.itinerary.scheduling.OperatingHoursParser;
 import travel_agency.pick_trip.domain.itinerary.scheduling.PlannedItinerary;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ScheduledDay;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ScheduledStop;
+import travel_agency.pick_trip.domain.itinerary.scheduling.SchedulingContext;
 import travel_agency.pick_trip.domain.itinerary.scheduling.SchedulingPlace;
 import travel_agency.pick_trip.domain.itinerary.scheduling.StayDurationPolicy;
+import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMatrix;
+import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
 import travel_agency.pick_trip.domain.share.entity.ShareToken;
 import travel_agency.pick_trip.domain.share.repository.ShareTokenRepository;
 import travel_agency.pick_trip.gloal.error.ErrorCode;
@@ -86,6 +90,7 @@ public class ItineraryService {
     private final ItineraryRepository itineraryRepository;
     private final ShareTokenRepository shareTokenRepository;
     private final CongestionService congestionService;
+    private final RoadMatrixResolver roadMatrixResolver;
 
     /** 바디 없이 호출한 기존 클라이언트를 위한 기본(STRICT) 생성. */
     @Transactional(readOnly = true)
@@ -132,8 +137,8 @@ public class ItineraryService {
         // 화이트리스트 필터와 이유 문구 정제를 먼저 통과시킨 뒤 스케줄링한다.
         // 스케줄러가 AI 원문을 그대로 받으면 걸러졌어야 할 장소에 시각까지 배정된다.
         AiItineraryResult cleaned = sanitizeReasons(filterToKnownContents(result, places));
-        ItineraryGenerateResponse response = ItineraryGenerateResponse.from(basket,
-                toPlanned(cleaned, places, basket.getTravelDate(), generateRequest.startContentId()));
+        ItineraryGenerateResponse response = ItineraryGenerateResponse.from(
+                basket, planByMode(cleaned, places, basket, generateRequest));
         return response.withSuggestions(buildCongestionSuggestions(response));
     }
 
@@ -426,11 +431,45 @@ public class ItineraryService {
     }
 
     /**
+     * 요청한 이동수단마다 일정안을 하나씩 만든다. AI 호출은 이미 끝났고, 같은 AI 결과·같은 장소 집합으로
+     * 스케줄링만 다시 돈다. 이동시간 모델이 달라 일차 배분과 방문 순서가 안마다 달라진다.
+     *
+     * <p>도로 거리 행렬은 자동차 안에만 쓰므로, 자동차 안이 있을 때 한 번만 조회해 재사용한다.
+     * 대중교통 안은 조회하지 않는다(자동차 경로라 무의미하고 API 사용량만 쓴다).
+     */
+    private Map<TravelMode, PlannedItinerary> planByMode(AiItineraryResult cleaned, List<AiPlace> places,
+                                                         Basket basket, GenerateItineraryRequest generateRequest) {
+        TravelMatrix roadMatrix = null;
+        Map<TravelMode, PlannedItinerary> plannedByMode = new LinkedHashMap<>();
+        for (TravelMode mode : generateRequest.travelModes()) {
+            if (mode == TravelMode.CAR && roadMatrix == null) {
+                roadMatrix = resolveRoadMatrix(places);
+            }
+            SchedulingContext context = new SchedulingContext(
+                    mode,
+                    mode == TravelMode.CAR ? roadMatrix : TravelMatrix.empty(),
+                    generateRequest.startContentId());
+            plannedByMode.put(mode, toPlanned(cleaned, places, basket.getTravelDate(), context));
+        }
+        return plannedByMode;
+    }
+
+    /** 도로 거리 조회가 실패해도 일정 생성은 성공해야 하므로, 빈 행렬(직선거리 폴백)로 진행한다. */
+    private TravelMatrix resolveRoadMatrix(List<AiPlace> places) {
+        try {
+            return roadMatrixResolver.resolve(places.stream().map(this::toSchedulingPlace).toList());
+        } catch (Exception e) {
+            log.warn("도로 거리 행렬 조회에 실패해 직선거리로 진행합니다: {}", e.getMessage());
+            return TravelMatrix.empty();
+        }
+    }
+
+    /**
      * AI 원안을 영업시간·이동시간 제약이 반영된 확정 일정으로 바꾼다.
      * 스케줄링이 깨져 일정 생성 전체가 실패하는 편이 사용자에게 더 손해이므로, 실패 시 AI 순서를 그대로 쓰는 형태로 폴백한다.
      */
     private PlannedItinerary toPlanned(AiItineraryResult result, List<AiPlace> places, LocalDate travelDate,
-                                       String startContentId) {
+                                       SchedulingContext context) {
         try {
             // AI 입력을 만들 때 이미 콘텐츠 상세를 보강해뒀으므로 여기서 다시 조회하지 않는다.
             Map<String, SchedulingPlace> placesById = places.stream()
@@ -441,7 +480,7 @@ public class ItineraryService {
                             LinkedHashMap::new));
             return ItineraryPlanner.plan(
                     result.title(), toDayContentIds(result), placesById, toReasonByContentId(result), travelDate,
-                    startContentId);
+                    context);
         } catch (Exception e) {
             log.warn("일정 스케줄링에 실패해 AI 순서를 그대로 사용합니다.", e);
             return unscheduled(result, places);

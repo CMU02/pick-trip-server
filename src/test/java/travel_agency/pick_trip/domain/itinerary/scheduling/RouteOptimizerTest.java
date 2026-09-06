@@ -21,7 +21,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "d"), List.of("b", "c"));
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "a");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("a"));
 
         // then
         assertThat(result).containsExactly(List.of("a", "b"), List.of("c", "d"));
@@ -36,7 +36,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "d"), List.of("b", "c"));
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "d");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("d"));
 
         // then
         assertThat(result).containsExactly(List.of("d", "c"), List.of("b", "a"));
@@ -52,7 +52,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "b", "c", "d", "e"), List.of());
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "a");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("a"));
 
         // then
         assertThat(result).containsExactly(List.of("a", "b", "c"), List.of("d", "e"));
@@ -66,7 +66,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "b"), List.of(), List.of());
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "a");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("a"));
 
         // then
         assertThat(result).containsExactly(List.of("a"), List.of("b"), List.of());
@@ -81,7 +81,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "n1", "b", "n2"));
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "a");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("a"));
 
         // then
         assertThat(result).containsExactly(List.of("a", "b", "n1", "n2"));
@@ -96,7 +96,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "b", "c"), List.of());
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "c");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("c"));
 
         // then
         assertThat(result).containsExactly(List.of("a", "b"), List.of("c"));
@@ -109,7 +109,7 @@ class RouteOptimizerTest {
         Map<String, SchedulingPlace> places = places(place("a", 35.0));
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(List.of(List.of("a")), places, "a");
+        List<List<String>> result = RouteOptimizer.redistribute(List.of(List.of("a")), places, SchedulingContext.car("a"));
 
         // then
         assertThat(result).containsExactly(List.of("a"));
@@ -124,7 +124,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("a", "c", "b"));
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "없는id");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("없는id"));
 
         // then
         assertThat(result).containsExactly(List.of("a", "b", "c"));
@@ -140,7 +140,7 @@ class RouteOptimizerTest {
         List<List<String>> aiPlan = List.of(List.of("start", "north", "south"));
 
         // when
-        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, "start");
+        List<List<String>> result = RouteOptimizer.redistribute(aiPlan, places, SchedulingContext.car("start"));
 
         // then
         assertThat(result).containsExactly(List.of("start", "south", "north"));

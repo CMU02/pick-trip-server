@@ -7,9 +7,14 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 시작 지점을 앵커로 삼아 좌표 기반 동선을 만든다.
- * 외부 의존성 없이 좌표만 보는 순수 코드이며, 일차 재배분({@link #redistribute})과
+ * 시작 지점을 앵커로 삼아 거리 기반 동선을 만든다.
+ * 외부 의존성 없이 값만 보는 순수 코드이며, 일차 재배분({@link #redistribute})과
  * 하루 안의 초기 순서({@link #nearestNeighborOrder})가 같은 nearest-neighbor 규칙을 쓴다.
+ *
+ * <p>구간 거리는 {@link SchedulingContext#legBetween}에서 가져온다. 도로 행렬이 있으면 실제 도로 거리,
+ * 없으면 직선거리다.
+ * ponytail: 한 줄 경로는 거리 기준으로만 꿴다. 대중교통은 도보/버스 경계에서 거리 순서와 시간 순서가
+ * 어긋날 수 있으나, 하루 안 순서는 뒤에서 시간 기준으로 다시 최적화하므로 일차 배분에만 영향이 남는다.
  */
 public final class RouteOptimizer {
 
@@ -32,12 +37,13 @@ public final class RouteOptimizer {
      *
      * <p>일차 수는 입력({@code daysPlan})을 그대로 따른다. 사용자가 요청한 여행 길이를 바꾸지 않기 위함이다.
      *
-     * @param anchorContentId 시작 지점. null 이거나 배분 대상에 없으면 첫 좌표 보유 장소에서 출발한다.
+     * @param context 이동수단·도로 행렬·시작 지점. 시작 지점이 null 이거나 배분 대상에 없으면
+     *                첫 좌표 보유 장소에서 출발한다.
      * @return 새 일차별 contentId 배열 (일차 수는 입력과 동일)
      */
     public static List<List<String>> redistribute(List<List<String>> daysPlan,
                                                   Map<String, SchedulingPlace> places,
-                                                  String anchorContentId) {
+                                                  SchedulingContext context) {
         if (daysPlan == null || daysPlan.isEmpty()) {
             return daysPlan;
         }
@@ -54,8 +60,7 @@ public final class RouteOptimizer {
             return daysPlan;
         }
 
-        List<SchedulingPlace> route = nearestNeighborOrder(
-                flat.stream().map(places::get).toList(), anchorContentId);
+        List<SchedulingPlace> route = nearestNeighborOrder(flat.stream().map(places::get).toList(), context);
 
         // 균등 분할하고 나머지는 앞 일차부터 하나씩 더 준다. 장소 수가 일수보다 적으면 뒤쪽 일차는 비게 된다.
         // ponytail: 개수로만 균등 분할해 체류시간·운영시간이 긴 장소가 한 일차에 몰릴 수 있다.
@@ -84,11 +89,11 @@ public final class RouteOptimizer {
      * <p>좌표가 없는 장소는 거리를 잴 근거가 없어 경로 탐색에 넣지 못한다.
      * 원래 순서를 유지한 채 경로 뒤에 그대로 이어 붙인다.
      *
-     * @param anchorContentId 첫 장소로 고정할 contentId. null 이거나 목록에 없거나 좌표가 없으면
-     *                        좌표를 가진 첫 장소에서 출발한다.
+     * @param context 이동수단·도로 행렬·시작 지점. 시작 지점이 null 이거나 목록에 없거나 좌표가 없으면
+     *                좌표를 가진 첫 장소에서 출발한다.
      */
     public static List<SchedulingPlace> nearestNeighborOrder(List<SchedulingPlace> places,
-                                                             String anchorContentId) {
+                                                             SchedulingContext context) {
         if (places == null || places.size() <= 1) {
             return places == null ? List.of() : List.copyOf(places);
         }
@@ -102,7 +107,7 @@ public final class RouteOptimizer {
             return List.copyOf(places);
         }
 
-        int startIndex = indexOfAnchor(withCoordinates, anchorContentId);
+        int startIndex = indexOfAnchor(withCoordinates, context.startContentId());
         List<SchedulingPlace> route = new ArrayList<>(places.size());
         boolean[] visited = new boolean[withCoordinates.size()];
 
@@ -117,7 +122,7 @@ public final class RouteOptimizer {
                 if (visited[i]) {
                     continue;
                 }
-                double km = kilometers(withCoordinates.get(current), withCoordinates.get(i));
+                double km = kilometers(context, withCoordinates.get(current), withCoordinates.get(i));
                 if (best < 0 || km < bestKm - TIE_KM
                         || (km <= bestKm + TIE_KM
                         && withCoordinates.get(i).mustVisit() && !withCoordinates.get(best).mustVisit())) {
@@ -146,7 +151,8 @@ public final class RouteOptimizer {
         return 0;
     }
 
-    private static double kilometers(SchedulingPlace from, SchedulingPlace to) {
-        return GeoDistance.kilometers(from.latitude(), from.longitude(), to.latitude(), to.longitude());
+    /** 좌표를 가진 장소끼리만 부르므로 구간이 null 로 돌아오지 않는다. */
+    private static double kilometers(SchedulingContext context, SchedulingPlace from, SchedulingPlace to) {
+        return context.legBetween(from, to).km();
     }
 }

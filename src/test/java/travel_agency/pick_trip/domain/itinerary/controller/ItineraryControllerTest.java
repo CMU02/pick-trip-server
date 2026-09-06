@@ -96,6 +96,7 @@ class ItineraryControllerTest {
                                     LocalTime.of(9, 0), LocalTime.of(10, 30), List.of(), false)
                     ), LocalDate.of(2026, 7, 1), 0, 0.0, List.of())),
                     List.of(),
+                    List.of(),
                     List.of()
             );
             given(itineraryService.generate(eq(USER_UID), any())).willReturn(expected);
@@ -116,7 +117,8 @@ class ItineraryControllerTest {
         void generate_withoutBody_usesStrictMode() {
             // given
             ItineraryGenerateResponse expected = new ItineraryGenerateResponse(
-                    "하동 1박 2일 가족 여행", Region.HADONG, LocalDate.of(2026, 7, 1), 2, List.of(), List.of(), List.of());
+                    "하동 1박 2일 가족 여행", Region.HADONG, LocalDate.of(2026, 7, 1), 2,
+                    List.of(), List.of(), List.of(), List.of());
             given(itineraryService.generate(eq(USER_UID), any())).willReturn(expected);
 
             // when
