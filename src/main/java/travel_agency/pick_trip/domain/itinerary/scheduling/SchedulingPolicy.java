@@ -20,6 +20,30 @@ public final class SchedulingPolicy {
     /** 직선거리(haversine)와 실제 도로 거리의 차이를 보정하는 우회 계수. */
     public static final double DETOUR_FACTOR = 1.3;
 
+    /**
+     * 도보 속도. 성인 평지 보행은 3~4km/h 구간이며, 짐·사진 촬영·신호 대기를 감안해 중간값인 3.5km/h 로 잡는다.
+     */
+    public static final double WALK_SPEED_KMH = 3.5;
+
+    /**
+     * 이 거리 이하 구간은 걸어서 이동한다고 본다(3.5km/h 로 약 34분).
+     * 초과하면 도보로 감당할 수 없다고 보고 시내버스로 환산한다.
+     * ponytail: 교통비 계산(#71)도 같은 경계를 쓰므로 정책 상수로 둔다.
+     */
+    public static final double WALK_MAX_KM = 2.0;
+
+    /**
+     * 시내버스 표정속도(정차·신호 포함한 실효 속도). 소도시 노선 기준 25km/h 로 잡는다.
+     * ponytail: 노선·배차를 모르는 근사. ODsay 등 대중교통 길찾기 API 를 붙이면 실측으로 교체한다.
+     */
+    public static final double TRANSIT_SPEED_KMH = 25.0;
+
+    /**
+     * 버스 한 번을 타기 위한 평균 대기 시간. 소도시 시내버스 배차가 30분 안팎이라 그 절반을 평균 대기로 본다.
+     * ponytail: 노선·배차를 모르는 근사. ODsay 등 대중교통 길찾기 API 를 붙이면 실측으로 교체한다.
+     */
+    public static final int TRANSIT_WAIT_MINUTES = 15;
+
     /** 체류 시간 정보가 없는 장소의 기본 관람 시간. */
     public static final int DEFAULT_STAY_MINUTES = 90;
 

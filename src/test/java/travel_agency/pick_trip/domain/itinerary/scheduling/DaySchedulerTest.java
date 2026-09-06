@@ -28,7 +28,7 @@ class DaySchedulerTest {
                 place("2", "B", 35.1, 127.0));
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.stops()).extracting(ScheduledStop::title).containsExactly("A", "B", "C");
@@ -49,7 +49,8 @@ class DaySchedulerTest {
                 "2", "종일관", null, null, null, OperatingHours.unknown(), 90, false);
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, List.of(anytime, earlyClose), Map.of());
+        ScheduledDay day = DayScheduler.schedule(
+                1, DATE, List.of(anytime, earlyClose), Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.stops()).extracting(ScheduledStop::title).containsExactly("이른마감관", "종일관");
@@ -65,7 +66,7 @@ class DaySchedulerTest {
                 new OperatingHours(10 * 60 + 30, 18 * 60, Set.of(), true), 90, false);
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, List.of(lateOpen), Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, List.of(lateOpen), Map.of(), SchedulingContext.car(null));
 
         // then
         ScheduledStop stop = day.stops().get(0);
@@ -83,7 +84,7 @@ class DaySchedulerTest {
                 new OperatingHours(9 * 60, 10 * 60, Set.of(), true), 90, false);
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, List.of(earlyClose), Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, List.of(earlyClose), Map.of(), SchedulingContext.car(null));
 
         // then
         ScheduledStop stop = day.stops().get(0);
@@ -102,7 +103,7 @@ class DaySchedulerTest {
                 place("3", "C", 35.1, 127.0));
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.stops()).extracting(ScheduledStop::title).containsExactly("A", "B", "C");
@@ -118,7 +119,7 @@ class DaySchedulerTest {
         List<SchedulingPlace> places = lineOfEightPlaces();
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.stops()).extracting(ScheduledStop::title)
@@ -138,7 +139,7 @@ class DaySchedulerTest {
                 place("3", "C", 35.2, 127.0));
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), "3");
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car("3"));
 
         // then
         assertThat(day.stops()).extracting(ScheduledStop::title).containsExactly("C", "B", "A");
@@ -152,7 +153,7 @@ class DaySchedulerTest {
         List<SchedulingPlace> places = lineOfEightPlaces();
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), "4");
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car("4"));
 
         // then
         assertThat(day.stops().get(0).title()).isEqualTo("P4");
@@ -170,7 +171,7 @@ class DaySchedulerTest {
                 place("2", "B", 35.1, 127.0));
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), "없는id");
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car("없는id"));
 
         // then
         assertThat(day.stops()).extracting(ScheduledStop::title).containsExactly("A", "B", "C");
@@ -190,7 +191,7 @@ class DaySchedulerTest {
     @DisplayName("장소가 없으면 예외 없이 빈 하루 일정을 돌려준다.")
     void returnEmptyDayWhenNoPlaces() {
         // when
-        ScheduledDay day = DayScheduler.schedule(2, DATE, List.of(), Map.of());
+        ScheduledDay day = DayScheduler.schedule(2, DATE, List.of(), Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.dayIndex()).isEqualTo(2);
@@ -213,7 +214,7 @@ class DaySchedulerTest {
         }
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.stops()).allSatisfy(stop -> {
@@ -234,7 +235,7 @@ class DaySchedulerTest {
                 place("2", "도착지", 35.9, 127.0));
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of());
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car(null));
 
         // then
         assertThat(day.totalTravelMinutes()).isEqualTo(224);
@@ -251,10 +252,46 @@ class DaySchedulerTest {
         List<SchedulingPlace> places = List.of(place("1", "A", 35.0, 127.0));
 
         // when
-        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of("1", "지역 대표 명소"));
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of("1", "지역 대표 명소"), SchedulingContext.car(null));
 
         // then
         assertThat(day.stops().get(0).reason()).isEqualTo("지역 대표 명소");
+    }
+
+    @Test
+    @DisplayName("같은 장소라도 대중교통 일정안의 하루 이동시간이 자동차보다 길다.")
+    void transitTakesLongerThanCarForSameDay() {
+        // given
+        List<SchedulingPlace> places = List.of(
+                place("1", "A", 35.0, 127.0),
+                place("2", "B", 35.1, 127.0));
+
+        // when
+        ScheduledDay car = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car(null));
+        ScheduledDay transit = DayScheduler.schedule(
+                1, DATE, places, Map.of(), new SchedulingContext(TravelMode.TRANSIT, null, null));
+
+        // then
+        assertThat(car.totalTravelMinutes()).isLessThan(transit.totalTravelMinutes());
+    }
+
+    @Test
+    @DisplayName("도로 행렬이 있으면 직선거리 대신 실측 도로 거리·시간으로 하루 이동량을 계산한다.")
+    void useRoadMatrixForDayTotals() {
+        // given - 직선 약 11.12km 구간을 도로 20km·40분으로 실측한 행렬
+        List<SchedulingPlace> places = List.of(
+                place("1", "A", 35.0, 127.0),
+                place("2", "B", 35.1, 127.0));
+        TravelMatrix matrix = new TravelMatrix(
+                Map.of(TravelMatrix.key("1", "2"), new TravelMatrix.Leg(20.0, 40)), 35.0);
+
+        // when
+        ScheduledDay day = DayScheduler.schedule(
+                1, DATE, places, Map.of(), new SchedulingContext(TravelMode.CAR, matrix, "1"));
+
+        // then
+        assertThat(day.totalTravelMinutes()).isEqualTo(40);
+        assertThat(day.totalTravelKm()).isEqualTo(20.0);
     }
 
     private static SchedulingPlace place(String contentId, String title, Double latitude, Double longitude) {

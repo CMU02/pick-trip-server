@@ -25,7 +25,7 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("1", "999")), basket, Map.of(), MONDAY);
+                "여행", List.of(List.of("1", "999")), basket, Map.of(), MONDAY, SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days()).hasSize(1);
@@ -43,7 +43,8 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a", "b"), List.of("b", "c")), basket, Map.of(), null);
+                "여행", List.of(List.of("a", "b"), List.of("b", "c")), basket, Map.of(), null,
+                SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days().get(0).stops())
@@ -63,7 +64,7 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("m"), List.of("x")), basket, Map.of(), MONDAY);
+                "여행", List.of(List.of("m"), List.of("x")), basket, Map.of(), MONDAY, SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days().get(0).stops()).isEmpty();
@@ -84,7 +85,7 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("m"), List.of("x")), basket, Map.of(), MONDAY);
+                "여행", List.of(List.of("m"), List.of("x")), basket, Map.of(), MONDAY, SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days().get(0).stops()).hasSize(1);
@@ -103,7 +104,7 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("m")), basket, Map.of(), null);
+                "여행", List.of(List.of("m")), basket, Map.of(), null, SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days().get(0).date()).isNull();
@@ -116,7 +117,7 @@ class ItineraryPlannerTest {
     @DisplayName("입력이 모두 null 이어도 빈 일정을 돌려준다.")
     void normalizeNullInputs() {
         // when
-        PlannedItinerary itinerary = ItineraryPlanner.plan("여행", null, null, null, null);
+        PlannedItinerary itinerary = ItineraryPlanner.plan("여행", null, null, null, null, SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.title()).isEqualTo("여행");
@@ -132,7 +133,7 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a"), List.of("b")), basket, Map.of(), MONDAY);
+                "여행", List.of(List.of("a"), List.of("b")), basket, Map.of(), MONDAY, SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days()).extracting(ScheduledDay::dayIndex).containsExactly(1, 2);
@@ -149,7 +150,8 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a", "d"), List.of("b", "c")), basket, Map.of(), null, "a");
+                "여행", List.of(List.of("a", "d"), List.of("b", "c")), basket, Map.of(), null,
+                SchedulingContext.car("a"));
 
         // then
         assertThat(itinerary.days().get(0).stops())
@@ -166,7 +168,8 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a", "d"), List.of("b", "c")), basket, Map.of(), null, "d");
+                "여행", List.of(List.of("a", "d"), List.of("b", "c")), basket, Map.of(), null,
+                SchedulingContext.car("d"));
 
         // then
         assertThat(itinerary.days().get(0).stops())
@@ -184,7 +187,8 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a", "d"), List.of("b", "c")), basket, Map.of(), null, null);
+                "여행", List.of(List.of("a", "d"), List.of("b", "c")), basket, Map.of(), null,
+                SchedulingContext.car(null));
 
         // then
         assertThat(itinerary.days().get(0).stops())
@@ -205,7 +209,7 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("b", "a", "c")), basket, Map.of(), null, null);
+                "여행", List.of(List.of("b", "a", "c")), basket, Map.of(), null, SchedulingContext.car(null));
 
         // then
         // b 에서 출발하면 왕복이라 75분, 첫 자리까지 재배치하면 50분이다.
@@ -223,9 +227,9 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary withStart = ItineraryPlanner.plan(
-                "여행", aiPlan, basket, Map.of(), null, "d");
+                "여행", aiPlan, basket, Map.of(), null, SchedulingContext.car("d"));
         PlannedItinerary withoutStart = ItineraryPlanner.plan(
-                "여행", aiPlan, basket, Map.of(), null, null);
+                "여행", aiPlan, basket, Map.of(), null, SchedulingContext.car(null));
 
         // then
         assertThat(withStart.days()).hasSize(3);
@@ -247,7 +251,8 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a", "b"), List.of("m")), basket, Map.of(), MONDAY, "a");
+                "여행", List.of(List.of("a", "b"), List.of("m")), basket, Map.of(), MONDAY,
+                SchedulingContext.car("a"));
 
         // then
         assertThat(itinerary.days().get(0).stops())
@@ -270,7 +275,8 @@ class ItineraryPlannerTest {
 
         // when
         PlannedItinerary itinerary = ItineraryPlanner.plan(
-                "여행", List.of(List.of("a", "b"), List.of("c", "d")), basket, Map.of(), null, "a");
+                "여행", List.of(List.of("a", "b"), List.of("c", "d")), basket, Map.of(), null,
+                SchedulingContext.car("a"));
 
         // then
         assertThat(itinerary.days().stream()

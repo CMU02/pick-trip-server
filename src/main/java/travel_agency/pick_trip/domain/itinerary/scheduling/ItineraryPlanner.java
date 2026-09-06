@@ -27,26 +27,18 @@ public final class ItineraryPlanner {
     private ItineraryPlanner() {
     }
 
-    /** 시작 지점 지정이 없는 호출. 재배분·순서 최적화는 그대로 수행하고 첫 스톱만 고정하지 않는다. */
-    public static PlannedItinerary plan(String title,
-                                        List<List<String>> dayContentIds,
-                                        Map<String, SchedulingPlace> placesById,
-                                        Map<String, String> reasonByContentId,
-                                        LocalDate travelDate) {
-        return plan(title, dayContentIds, placesById, reasonByContentId, travelDate, null);
-    }
-
     /**
-     * @param startContentId 여행을 시작할 장소. 앵커 고정 여부만 결정한다.
-     *                       지정하면 그 장소에서 경로를 시작하고 해당 일차의 첫 스톱으로 고정한다.
-     *                       null 이면 좌표를 가진 첫 장소에서 경로를 시작하되 첫 자리도 재배치 대상이 된다.
+     * @param context 이동수단·도로 행렬·시작 지점. 이동수단에 따라 구간 소요 시간 모델이 달라져
+     *                같은 장소 집합이라도 일차 배분·방문 순서가 달라진다.
+     *                시작 지점을 지정하면 그 장소에서 경로를 시작해 해당 일차의 첫 스톱으로 고정하고,
+     *                null 이면 좌표를 가진 첫 장소에서 시작하되 첫 자리도 재배치 대상이 된다.
      */
     public static PlannedItinerary plan(String title,
                                         List<List<String>> dayContentIds,
                                         Map<String, SchedulingPlace> placesById,
                                         Map<String, String> reasonByContentId,
                                         LocalDate travelDate,
-                                        String startContentId) {
+                                        SchedulingContext context) {
         List<List<String>> requested = (dayContentIds == null) ? List.of() : dayContentIds;
         Map<String, SchedulingPlace> places = (placesById == null) ? Map.of() : placesById;
         Map<String, String> reasons = (reasonByContentId == null) ? Map.of() : reasonByContentId;
@@ -55,7 +47,7 @@ public final class ItineraryPlanner {
         List<List<String>> daysPlan = filterToBasket(requested, places);
         // 시작 지점 지정 여부와 무관하게 재배분한다. AI 배분은 초기값일 뿐이고,
         // 미지정이면 RouteOptimizer 가 좌표를 가진 첫 장소를 출발점으로 삼는다.
-        daysPlan = RouteOptimizer.redistribute(daysPlan, places, startContentId);
+        daysPlan = RouteOptimizer.redistribute(daysPlan, places, context);
 
         // 휴무일이지만 옮길 일차가 없어 그대로 둔 장소. 스케줄링 후 안내를 덧붙이기 위해 모아둔다.
         Set<String> stillClosed = new HashSet<>();
@@ -73,7 +65,7 @@ public final class ItineraryPlanner {
                     travelDate == null ? null : travelDate.plusDays(i),
                     dayPlaces,
                     reasons,
-                    startContentId);
+                    context);
             days.add(stillClosed.isEmpty() ? day : withClosedNotes(day, stillClosed));
         }
 

@@ -48,6 +48,7 @@ import travel_agency.pick_trip.domain.content.repository.projection.RegionConten
 import travel_agency.pick_trip.domain.content.entity.CongestionLevel;
 import travel_agency.pick_trip.domain.content.service.CongestionService;
 import travel_agency.pick_trip.domain.content.service.ContentService;
+import travel_agency.pick_trip.domain.content.service.RoadMatrixResolver;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
@@ -59,6 +60,8 @@ import travel_agency.pick_trip.domain.itinerary.entity.ItineraryDay;
 import travel_agency.pick_trip.domain.itinerary.entity.ItineraryItem;
 import travel_agency.pick_trip.domain.itinerary.repository.ItineraryRepository;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ItineraryPlanner;
+import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMatrix;
+import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
 import travel_agency.pick_trip.domain.region.Region;
 import travel_agency.pick_trip.domain.share.entity.ShareToken;
 import travel_agency.pick_trip.domain.share.repository.ShareTokenRepository;
@@ -83,6 +86,7 @@ class ItineraryServiceTest {
     @Mock private ItineraryRepository itineraryRepository;
     @Mock private ShareTokenRepository shareTokenRepository;
     @Mock private CongestionService congestionService;
+    @Mock private RoadMatrixResolver roadMatrixResolver;
     @InjectMocks private ItineraryService itineraryService;
 
     private static final UUID USER_ID = UUID.randomUUID();
@@ -105,9 +109,14 @@ class ItineraryServiceTest {
     }
 
     private ContentDetailResponse detail(String contentId) {
+        return detailAt(contentId, 35.0, 127.0);
+    }
+
+    /** 좌표가 갈려야 이동수단별 소요 시간 차이가 드러나는 테스트에서 쓴다. */
+    private ContentDetailResponse detailAt(String contentId, double latitude, double longitude) {
         return new ContentDetailResponse(
                 contentId, "title-" + contentId, 12, "주소", "010", "home",
-                35.0, 127.0, "요약", "09:00-18:00", "월요일", "가능", "무료",
+                latitude, longitude, "요약", "09:00-18:00", "월요일", "가능", "무료",
                 "없음", "불가", "2시간", Boolean.FALSE, "TourAPI", List.of(),
                 ContentCategory.ATTRACTION, false, "HADONG", null
         );
@@ -747,6 +756,131 @@ class ItineraryServiceTest {
             assertThat(response.days().get(0).items())
                     .extracting(ItineraryGenerateResponse.Item::contentId)
                     .containsExactly("c1", "c2");
+        }
+    }
+
+    @Nested
+    @DisplayName("generate - 이동수단별 일정안")
+    class TravelModes {
+
+        /** c1·c2 를 위도 0.1도(약 11km) 떨어뜨려 이동수단별 소요 시간 차이가 드러나게 한다. */
+        private Basket twoPlacesApart() {
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString())).willAnswer(invocation -> {
+                String contentId = invocation.getArgument(0);
+                return detailAt(contentId, "c1".equals(contentId) ? 35.0 : 35.1, 127.0);
+            });
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+            return basket;
+        }
+
+        @Test
+        @DisplayName("이동수단을 지정하지 않으면 자동차 단일안이고 최상위 필드는 첫 안의 복제다")
+        void defaultsToSingleCarVariant() {
+            // given
+            twoPlacesApart();
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            // then
+            assertThat(response.variants()).hasSize(1);
+            ItineraryGenerateResponse.Variant primary = response.variants().get(0);
+            assertThat(primary.travelMode()).isEqualTo(TravelMode.CAR);
+            assertThat(primary.label()).isEqualTo("자동차 힐링 루트");
+            assertThat(response.title()).isEqualTo(primary.title());
+            assertThat(response.days()).isEqualTo(primary.days());
+            assertThat(response.adjustments()).isEqualTo(primary.adjustments());
+        }
+
+        @Test
+        @DisplayName("이동수단을 두 개 지정하면 안이 두 개 나오고 대중교통 안의 이동시간이 더 길다")
+        void buildsOneVariantPerTravelMode() {
+            // given
+            twoPlacesApart();
+            GenerateItineraryRequest request = new GenerateItineraryRequest(
+                    null, null, List.of(TravelMode.CAR, TravelMode.TRANSIT));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, request);
+
+            // then
+            assertThat(response.variants()).extracting(ItineraryGenerateResponse.Variant::travelMode)
+                    .containsExactly(TravelMode.CAR, TravelMode.TRANSIT);
+            assertThat(response.variants()).extracting(ItineraryGenerateResponse.Variant::label)
+                    .containsExactly("자동차 힐링 루트", "뚜벅이 가성비 루트");
+            int carMinutes = response.variants().get(0).days().get(0).totalTravelMinutes();
+            int transitMinutes = response.variants().get(1).days().get(0).totalTravelMinutes();
+            assertThat(carMinutes).isLessThan(transitMinutes);
+            // AI 는 안 개수와 무관하게 한 번만 호출한다.
+            verify(aiItineraryClient).generate(any());
+        }
+
+        @Test
+        @DisplayName("대중교통 안만 요청하면 자동차 도로 거리를 조회하지 않는다")
+        void doesNotResolveRoadMatrixForTransitOnly() {
+            // given
+            twoPlacesApart();
+            GenerateItineraryRequest request =
+                    new GenerateItineraryRequest(null, null, List.of(TravelMode.TRANSIT));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, request);
+
+            // then
+            assertThat(response.variants()).hasSize(1);
+            verify(roadMatrixResolver, never()).resolve(any());
+        }
+
+        @Test
+        @DisplayName("자동차 안은 실제 도로 거리 행렬을 이동량 계산에 사용한다")
+        void usesRoadMatrixForCarVariant() {
+            // given - 직선 약 11km 구간을 도로 20km·40분으로 실측한 행렬
+            twoPlacesApart();
+            given(roadMatrixResolver.resolve(any())).willReturn(new TravelMatrix(
+                    Map.of(
+                            TravelMatrix.key("c1", "c2"), new TravelMatrix.Leg(20.0, 40),
+                            TravelMatrix.key("c2", "c1"), new TravelMatrix.Leg(20.0, 40)),
+                    35.0));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            // then
+            ItineraryGenerateResponse.Day day = response.days().get(0);
+            assertThat(day.totalTravelMinutes()).isEqualTo(40);
+            assertThat(day.totalTravelKm()).isEqualTo(20.0);
+        }
+
+        @Test
+        @DisplayName("도로 거리 조회가 전부 실패해 빈 행렬이어도 직선거리로 정상 생성한다")
+        void fallsBackToStraightDistanceWhenMatrixIsEmpty() {
+            // given
+            twoPlacesApart();
+            given(roadMatrixResolver.resolve(any())).willReturn(TravelMatrix.empty());
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            // then
+            // 직선 약 11.12km * 1.3 / 35km/h = 25분
+            assertThat(response.days().get(0).totalTravelMinutes()).isEqualTo(25);
+        }
+
+        @Test
+        @DisplayName("도로 거리 조회가 예외를 던져도 일정 생성은 성공한다")
+        void survivesRoadMatrixFailure() {
+            // given
+            twoPlacesApart();
+            given(roadMatrixResolver.resolve(any())).willThrow(new IllegalStateException("kakao down"));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            // then
+            assertThat(response.variants()).hasSize(1);
+            assertThat(response.days().get(0).items()).hasSize(2);
         }
     }
 
