@@ -43,7 +43,9 @@ public record ItineraryGenerateResponse(
             // jackson 시간 모듈 기본값은 LocalTime 을 배열/객체로 직렬화하므로, 계약을 "HH:mm" 문자열로 못박는다.
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime startTime,
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime,
-            List<String> notes
+            List<String> notes,
+            // 바구니에 없던 장소를 AI 가 추가 제안한 경우 true (AUGMENT 모드). 사용자가 저장 전 제거할 수 있다.
+            boolean addedByAi
     ) {
     }
 
@@ -51,6 +53,8 @@ public record ItineraryGenerateResponse(
      * 스케줄링 결과를 미리보기 응답으로 변환한다.
      * 장소 표시명(title)은 AI 응답을 신뢰하지 않고 바구니 스냅샷 매핑을 우선 사용하며,
      * 매핑이 없을 때만 스케줄러가 들고 있던 값으로 대체한다.
+     * AUGMENT 로 추가된 장소는 바구니 스냅샷에 없다는 사실 자체로 구분되므로,
+     * 스케줄링 결과에 플래그를 심지 않고 여기서 계산한다.
      */
     public static ItineraryGenerateResponse from(Basket basket, PlannedItinerary planned) {
         Map<String, String> titleByContentId = basket.getItems().stream()
@@ -71,7 +75,8 @@ public record ItineraryGenerateResponse(
                                         stop.reason(),
                                         stop.startTime(),
                                         stop.endTime(),
-                                        stop.notes()
+                                        stop.notes(),
+                                        !titleByContentId.containsKey(stop.contentId())
                                 ))
                                 .toList(),
                         day.date(),
