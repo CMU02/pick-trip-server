@@ -49,8 +49,20 @@ public final class DayScheduler {
             return new ScheduledDay(dayIndex, date, List.of(), 0, 0.0, List.of());
         }
 
+        return build(dayIndex, date, bestOrder(source, context), reasonByContentId, context);
+    }
+
+    /**
+     * 순서가 이미 확정된 목록에 시각·이동 요약을 배정한다.
+     * 순서 탐색을 건너뛰므로, 확정된 순서에 휴식 스톱을 끼워 넣은 뒤 다시 시각을 매기는 데도 쓴다
+     * ({@link RestBreaks}). 여기서 다시 순서를 바꾸면 끼워 넣은 위치가 흐트러진다.
+     */
+    static ScheduledDay build(int dayIndex,
+                              LocalDate date,
+                              List<SchedulingPlace> ordered,
+                              Map<String, String> reasonByContentId,
+                              SchedulingContext context) {
         Map<String, String> reasons = (reasonByContentId == null) ? Map.of() : reasonByContentId;
-        List<SchedulingPlace> ordered = bestOrder(source, context);
         Simulation sim = simulate(ordered, context);
 
         List<ScheduledStop> stops = new ArrayList<>(ordered.size());

@@ -25,6 +25,8 @@ import travel_agency.pick_trip.domain.basket.entity.Priority;
 import travel_agency.pick_trip.domain.basket.entity.TravelCondition;
 import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
+import travel_agency.pick_trip.domain.content.dto.response.NearbyContentResponse.NearbyContentItem;
+import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.content.entity.DataStatus;
 import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
 import travel_agency.pick_trip.domain.content.entity.CongestionLevel;
@@ -43,9 +45,12 @@ import travel_agency.pick_trip.domain.itinerary.entity.Itinerary;
 import travel_agency.pick_trip.domain.itinerary.entity.ItineraryDay;
 import travel_agency.pick_trip.domain.itinerary.entity.ItineraryItem;
 import travel_agency.pick_trip.domain.itinerary.repository.ItineraryRepository;
+import travel_agency.pick_trip.domain.itinerary.scheduling.ElevationProfile;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ItineraryPlanner;
+import travel_agency.pick_trip.domain.itinerary.scheduling.OperatingHours;
 import travel_agency.pick_trip.domain.itinerary.scheduling.OperatingHoursParser;
 import travel_agency.pick_trip.domain.itinerary.scheduling.PlannedItinerary;
+import travel_agency.pick_trip.domain.itinerary.scheduling.RestBreaks;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ScheduledDay;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ScheduledStop;
 import travel_agency.pick_trip.domain.itinerary.scheduling.SchedulingContext;
@@ -86,6 +91,12 @@ public class ItineraryService {
     /** 혼잡 기반 순서변경 제안의 {@code type} 값. */
     private static final String SUGGESTION_CONGESTION_REORDER = "CONGESTION_REORDER";
 
+    /** 휴식 스톱 후보를 찾을 반경(km). 직전 스톱에서 걸어갈 수 있는 거리라야 쉬어가는 의미가 있다. */
+    private static final double REST_SEARCH_RADIUS_KM = 2.0;
+
+    /** 휴식 후보 조회 건수. 이미 일정에 있는 장소·카페 아닌 장소를 걸러내고도 하나는 남도록 여유를 둔다. */
+    private static final int REST_SEARCH_SIZE = 10;
+
     private final BasketRepository basketRepository;
     private final ContentService contentService;
     private final TravelContentRepository travelContentRepository;
@@ -95,6 +106,7 @@ public class ItineraryService {
     private final CongestionService congestionService;
     private final RoadMatrixResolver roadMatrixResolver;
     private final ItineraryCostProperties costProperties;
+    private final ElevationResolver elevationResolver;
 
     /** 바디 없이 호출한 기존 클라이언트를 위한 기본(STRICT) 생성. */
     @Transactional(readOnly = true)
@@ -441,6 +453,8 @@ public class ItineraryService {
      *
      * <p>도로 거리 행렬은 자동차 안에만 쓰므로, 자동차 안이 있을 때 한 번만 조회해 재사용한다.
      * 대중교통 안은 조회하지 않는다(자동차 경로라 무의미하고 API 사용량만 쓴다).
+     *
+     * <p>고도는 안마다 장소 집합이 같으므로 루프 밖에서 한 번만 조회해 모든 안이 공유한다.
      */
     private PlannedVariants planByMode(AiItineraryResult cleaned, List<AiPlace> places,
                                        Basket basket, GenerateItineraryRequest generateRequest) {
@@ -451,23 +465,31 @@ public class ItineraryService {
                         this::toSchedulingPlace,
                         (first, ignored) -> first,
                         LinkedHashMap::new));
+        // 장소 집합은 안마다 같으므로 고도는 variant 루프 밖에서 한 번만 조회해 모든 안이 공유한다.
+        List<SchedulingPlace> schedulingPlaces = List.copyOf(placesById.values());
+        ElevationProfile elevations = elevationResolver.resolve(schedulingPlaces);
 
         TravelMatrix roadMatrix = null;
         Map<TravelMode, PlannedItinerary> plannedByMode = new LinkedHashMap<>();
         Map<TravelMode, VariantMetrics> metricsByMode = new LinkedHashMap<>();
         for (TravelMode mode : generateRequest.travelModes()) {
             if (mode == TravelMode.CAR && roadMatrix == null) {
-                roadMatrix = resolveRoadMatrix(places);
+                roadMatrix = resolveRoadMatrix(schedulingPlaces);
             }
             SchedulingContext context = new SchedulingContext(
                     mode,
                     mode == TravelMode.CAR ? roadMatrix : TravelMatrix.empty(),
-                    generateRequest.startContentId());
-            PlannedItinerary planned = toPlanned(cleaned, placesById, basket.getTravelDate(), context);
+                    generateRequest.startContentId(),
+                    elevations);
+            // 자동 삽입된 휴식 스톱을 지표가 되짚을 수 있어야 하는데, 그 장소를 공용 맵에 넣으면
+            // 다른 안의 스케줄링에까지 샌다. 안마다 사본을 써서 삽입분을 그 안에만 남긴다.
+            Map<String, SchedulingPlace> variantPlaces = new LinkedHashMap<>(placesById);
+            PlannedItinerary planned = toPlanned(cleaned, variantPlaces, basket.getTravelDate(), context);
             plannedByMode.put(mode, planned);
             // 지표는 스케줄링과 같은 컨텍스트로 계산해야 도보 판정·거리 기준이 일정과 어긋나지 않는다.
+            // 휴식 스톱까지 반영된 결과를 넘겨야 장소 수·도보 시간이 실제 응답과 일치한다.
             metricsByMode.put(mode, VariantMetricsCalculator.calculate(
-                    planned, context, placesById,
+                    planned, context, variantPlaces,
                     costProperties.carCostPerKmWon(), costProperties.transitBaseFareWon()));
         }
         return new PlannedVariants(plannedByMode, metricsByMode);
@@ -481,9 +503,9 @@ public class ItineraryService {
     }
 
     /** 도로 거리 조회가 실패해도 일정 생성은 성공해야 하므로, 빈 행렬(직선거리 폴백)로 진행한다. */
-    private TravelMatrix resolveRoadMatrix(List<AiPlace> places) {
+    private TravelMatrix resolveRoadMatrix(List<SchedulingPlace> places) {
         try {
-            return roadMatrixResolver.resolve(places.stream().map(this::toSchedulingPlace).toList());
+            return roadMatrixResolver.resolve(places);
         } catch (Exception e) {
             log.warn("도로 거리 행렬 조회에 실패해 직선거리로 진행합니다: {}", e.getMessage());
             return TravelMatrix.empty();
@@ -491,19 +513,123 @@ public class ItineraryService {
     }
 
     /**
-     * AI 원안을 영업시간·이동시간 제약이 반영된 확정 일정으로 바꾼다.
+     * AI 원안을 영업시간·이동시간 제약이 반영된 확정 일정으로 바꾸고, 도보 안이면 휴식 스톱까지 끼워 넣는다.
      * 스케줄링이 깨져 일정 생성 전체가 실패하는 편이 사용자에게 더 손해이므로, 실패 시 AI 순서를 그대로 쓰는 형태로 폴백한다.
      */
     private PlannedItinerary toPlanned(AiItineraryResult result, Map<String, SchedulingPlace> placesById,
                                        LocalDate travelDate, SchedulingContext context) {
         try {
-            return ItineraryPlanner.plan(
+            PlannedItinerary planned = ItineraryPlanner.plan(
                     result.title(), toDayContentIds(result), placesById, toReasonByContentId(result), travelDate,
                     context);
+            return withRestStops(planned, placesById, context);
         } catch (Exception e) {
             log.warn("일정 스케줄링에 실패해 AI 순서를 그대로 사용합니다.", e);
             return unscheduled(result, placesById.keySet());
         }
+    }
+
+    // --- 체력 안배 휴식 스톱 자동 삽입 (#72) ---
+
+    /**
+     * 도보 부담이 쌓인 지점에 근처 카페를 휴식 스톱으로 끼워 넣는다.
+     * 자동차 안은 경사·도보 부담이 없어 대상이 아니다(이슈도 도보 일정을 대상으로 한다).
+     *
+     * <p>삽입 지점 계산은 순수 코드({@link RestBreaks})가 하고, 실제 콘텐츠 조회만 여기서 한다.
+     */
+    private PlannedItinerary withRestStops(PlannedItinerary planned, Map<String, SchedulingPlace> placesById,
+                                           SchedulingContext context) {
+        if (context.travelMode() != TravelMode.TRANSIT) {
+            return planned;
+        }
+        // 이미 일정에 들어 있는 장소는 후보에서 뺀다. 같은 장소를 두 번 방문하는 일정이 되기 때문이다.
+        Set<String> used = planned.days().stream()
+                .flatMap(day -> day.stops().stream())
+                .map(ScheduledStop::contentId)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        List<ScheduledDay> days = new ArrayList<>(planned.days().size());
+        for (ScheduledDay day : planned.days()) {
+            days.add(withRestStops(day, placesById, context, used));
+        }
+        return new PlannedItinerary(planned.title(), days, planned.adjustments());
+    }
+
+    private ScheduledDay withRestStops(ScheduledDay day, Map<String, SchedulingPlace> placesById,
+                                       SchedulingContext context, Set<String> used) {
+        List<SchedulingPlace> ordered = day.stops().stream()
+                .map(stop -> placesById.get(stop.contentId()))
+                .toList();
+        // 스톱 하나라도 장소를 되짚지 못하면(폴백 경로 등) 시각을 다시 매길 수 없으므로 건드리지 않는다.
+        if (ordered.contains(null)) {
+            return day;
+        }
+
+        List<RestBreaks.Point> points = RestBreaks.findPoints(ordered, context);
+        if (points.isEmpty()) {
+            return day;
+        }
+
+        List<RestBreaks.Insertion> insertions = new ArrayList<>(points.size());
+        for (RestBreaks.Point point : points) {
+            SchedulingPlace place = findRestPlace(point.afterContentId(), used);
+            if (place != null) {
+                used.add(place.contentId());
+                // 지표 계산이 이 스톱을 낀 구간까지 재려면 장소를 되짚을 수 있어야 한다.
+                placesById.put(place.contentId(), place);
+                insertions.add(new RestBreaks.Insertion(point.afterContentId(), place, point.reason()));
+            }
+        }
+        return RestBreaks.insert(day, ordered, context, insertions);
+    }
+
+    /**
+     * 직전 스톱 근처의 카페(음식 분류)를 하나 고른다.
+     * 후보가 없거나 조회가 실패하면 예외를 던지지 않고 null 을 돌려준다 — 휴식은 보조 기능이라
+     * 삽입하지 않고 일정을 그대로 내보내는 편이 낫다.
+     *
+     * <p>ponytail: 삽입 지점마다 근처 조회를 한 번씩 한다(내부적으로 길찾기도 탄다).
+     * 하루에 휴식이 한두 번이라 지금은 문제가 없고, 호출량이 걸리면 그날 스톱 전체의 근처 카페를
+     * 한 번에 모아 오는 형태로 올린다.
+     */
+    private SchedulingPlace findRestPlace(String afterContentId, Set<String> used) {
+        try {
+            return contentService.getNearbyContents(afterContentId, REST_SEARCH_RADIUS_KM, REST_SEARCH_SIZE)
+                    .items().stream()
+                    .filter(item -> item.contentId() != null && !used.contains(item.contentId()))
+                    .filter(ItineraryService::isRestCandidate)
+                    .findFirst()
+                    .map(ItineraryService::toRestPlace)
+                    .orElse(null);
+        } catch (Exception e) {
+            log.warn("[휴식] 근처 카페 조회에 실패해 휴식 스톱 없이 진행합니다. contentId={}", afterContentId);
+            return null;
+        }
+    }
+
+    /** 카페·식당 판정은 기존 {@link ContentCategory} 분류를 그대로 쓴다. 별도 분류 체계를 두지 않는다. */
+    private static boolean isRestCandidate(NearbyContentItem item) {
+        // 근처 조회는 좌표를 모르면 0,0 으로 내려준다. 그대로 쓰면 이동 시간이 엉뚱하게 잡힌다.
+        if (item.latitude() == 0.0 && item.longitude() == 0.0) {
+            return false;
+        }
+        ContentCategory category = item.category() != null
+                ? item.category()
+                : ContentCategory.fromContentTypeId(item.contentTypeId());
+        return category == ContentCategory.FOOD;
+    }
+
+    /** 근처 조회 응답에는 운영시간이 없어 미상으로 둔다(운영시간 위반 판정에서 빠진다). */
+    private static SchedulingPlace toRestPlace(NearbyContentItem item) {
+        return new SchedulingPlace(
+                item.contentId(),
+                item.title(),
+                parseContentTypeId(item.contentTypeId()),
+                item.latitude(),
+                item.longitude(),
+                OperatingHours.unknown(),
+                RestBreaks.REST_STAY_MINUTES,
+                false);
     }
 
     private SchedulingPlace toSchedulingPlace(AiPlace place) {
@@ -522,7 +648,7 @@ public class ItineraryService {
     }
 
     /** category 는 TourAPI contentTypeId 문자열이지만 바구니 스냅샷 값이 섞일 수 있어 형식을 보장하지 못한다. */
-    private Integer parseContentTypeId(String category) {
+    private static Integer parseContentTypeId(String category) {
         if (category == null) {
             return null;
         }

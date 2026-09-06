@@ -59,6 +59,24 @@ public final class SchedulingPolicy {
     /** 순서 재배치 탐색은 조합 폭발을 피하기 위해 하루 7개 장소까지만 수행한다. */
     public static final int MAX_REORDER_STOPS = 7;
 
+    /**
+     * Naismith 규칙 근사에서 쓰는 시간당 상승고도(m). 원 규칙은 "수평 5km/h + 상승 600m/h" 이므로
+     * 오르막 600m 마다 +60분(= 300m 마다 +30분)이 붙는다. 이슈 #72 에 적힌 근사치를 그대로 쓴다.
+     */
+    public static final double NAISMITH_CLIMB_METERS_PER_HOUR = 600.0;
+
+    /**
+     * 휴식 스톱을 권하는 누적 도보 시간(분). 성인 보행자가 쉬지 않고 걷는 한계를 1시간 30분으로 본다.
+     * 관광 도보는 중간에 관람 체류가 끼므로 통근·등산 기준(보통 60분)보다 여유를 뒀다.
+     */
+    public static final int REST_WALK_MINUTES = 90;
+
+    /**
+     * 휴식 스톱을 권하는 누적 상승고도(m). 소도시 관광 코스에서 200m 는 20~30층 계단에 해당하며,
+     * 이 지점을 넘으면 평지 도보와 체감 피로가 확연히 달라진다.
+     */
+    public static final double REST_CLIMB_METERS = 200.0;
+
     private SchedulingPolicy() {
     }
 }

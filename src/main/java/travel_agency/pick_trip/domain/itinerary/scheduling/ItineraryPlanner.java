@@ -152,7 +152,7 @@ public final class ItineraryPlanner {
                     List<String> notes = new ArrayList<>(stop.notes());
                     notes.add(CLOSED_STOP_NOTE);
                     return new ScheduledStop(stop.contentId(), stop.title(), stop.order(), stop.reason(),
-                            stop.startTime(), stop.endTime(), notes);
+                            stop.startTime(), stop.endTime(), notes, stop.autoRest());
                 })
                 .toList();
         return new ScheduledDay(day.dayIndex(), day.date(), stops,

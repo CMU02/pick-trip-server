@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,6 +46,8 @@ import travel_agency.pick_trip.domain.basket.entity.Priority;
 import travel_agency.pick_trip.domain.basket.entity.TravelCondition;
 import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
+import travel_agency.pick_trip.domain.content.dto.response.NearbyContentResponse;
+import travel_agency.pick_trip.domain.content.dto.response.NearbyContentResponse.NearbyContentItem;
 import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.content.entity.DataStatus;
 import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
@@ -62,6 +67,7 @@ import travel_agency.pick_trip.domain.itinerary.entity.Itinerary;
 import travel_agency.pick_trip.domain.itinerary.entity.ItineraryDay;
 import travel_agency.pick_trip.domain.itinerary.entity.ItineraryItem;
 import travel_agency.pick_trip.domain.itinerary.repository.ItineraryRepository;
+import travel_agency.pick_trip.domain.itinerary.scheduling.ElevationProfile;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ItineraryPlanner;
 import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMatrix;
 import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
@@ -93,6 +99,7 @@ class ItineraryServiceTest {
     @Mock private RoadMatrixResolver roadMatrixResolver;
     // 설정값이라 mock 이 아닌 실제 값으로 주입해야 교통비 계산을 검증할 수 있다(application.yaml 기본값과 동일).
     @Spy private ItineraryCostProperties costProperties = new ItineraryCostProperties(142, 1500);
+    @Mock private ElevationResolver elevationResolver;
     @InjectMocks private ItineraryService itineraryService;
 
     private static final UUID USER_ID = UUID.randomUUID();
@@ -941,6 +948,300 @@ class ItineraryServiceTest {
             // then
             assertThat(response.variants()).hasSize(1);
             assertThat(response.days().get(0).items()).hasSize(2);
+        }
+    }
+
+    @Nested
+    @DisplayName("generate - 체력 안배 휴식 스톱 자동 삽입")
+    class RestStops {
+
+        /** c1~c4 를 경도 0.005도(약 0.46km) 간격으로 늘어놓아 전 구간이 도보 경계 안에 들어오게 한다. */
+        private static final double LONGITUDE_STEP = 0.005;
+
+        private double longitudeOf(String contentId) {
+            return 127.0 + (Integer.parseInt(contentId.substring(1)) - 1) * LONGITUDE_STEP;
+        }
+
+        /** 운영시간을 비워 둔 상세. 휴식 삽입만 보려는 테스트에서 운영시간 경고가 끼어들지 않게 한다. */
+        private ContentDetailResponse openAllDay(String contentId) {
+            return new ContentDetailResponse(
+                    contentId, "title-" + contentId, 12, "주소", "010", "home",
+                    35.0, longitudeOf(contentId), "요약", null, null, "가능", "무료",
+                    "없음", "불가", "2시간", Boolean.FALSE, "TourAPI", List.of(),
+                    ContentCategory.ATTRACTION, false, "HADONG", null);
+        }
+
+        private AiItineraryResult fourPlaceResult() {
+            return new AiItineraryResult("하동 도보 여행", List.of(new AiDay(1, List.of(
+                    new AiItem("c1", 1, "출발 지점입니다."),
+                    new AiItem("c2", 2, "동선상 인접합니다."),
+                    new AiItem("c3", 3, "동선상 인접합니다."),
+                    new AiItem("c4", 4, "동선상 인접합니다.")
+            ))));
+        }
+
+        /** c1→c2→c3 구간이 150m 씩 오르막이라 c3 에 닿으면 누적 상승고도가 임계(200m)를 넘는다. */
+        private void givenUphillWalkingCourse() {
+            Basket basket = basketWith(Region.HADONG, 1, "c1", "c2", "c3", "c4");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> openAllDay(invocation.getArgument(0)));
+            given(aiItineraryClient.generate(any())).willReturn(fourPlaceResult());
+            given(elevationResolver.resolve(any())).willReturn(new ElevationProfile(Map.of(
+                    ElevationProfile.key(35.0, longitudeOf("c1")), 0.0,
+                    ElevationProfile.key(35.0, longitudeOf("c2")), 150.0,
+                    ElevationProfile.key(35.0, longitudeOf("c3")), 300.0,
+                    ElevationProfile.key(35.0, longitudeOf("c4")), 300.0)));
+        }
+
+        private NearbyContentItem cafe(String contentId, double longitude) {
+            return new NearbyContentItem(contentId, "카페-" + contentId, "39", "주소", null,
+                    35.0, longitude, ContentCategory.FOOD, "요약", "HADONG", 0.1);
+        }
+
+        private NearbyContentResponse nearby(NearbyContentItem... items) {
+            return new NearbyContentResponse(
+                    "c3", 2.0, NearbyContentResponse.NearbySource.LOCAL, List.of(items));
+        }
+
+        private GenerateItineraryRequest transitRequest() {
+            return new GenerateItineraryRequest(null, "c1", List.of(TravelMode.TRANSIT));
+        }
+
+        @Test
+        @DisplayName("누적 상승고도가 임계를 넘으면 근처 카페를 휴식 스톱으로 끼워 넣는다")
+        void insertsRestStopWhenClimbAccumulates() {
+            // given
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby(cafe("cafe1", 127.011)));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, transitRequest());
+
+            // then
+            List<ItineraryGenerateResponse.Item> items = response.days().get(0).items();
+            assertThat(items).extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "cafe1", "c4");
+            assertThat(items).extracting(ItineraryGenerateResponse.Item::order)
+                    .containsExactly(1, 2, 3, 4, 5);
+
+            ItineraryGenerateResponse.Item rest = items.get(3);
+            assertThat(rest.addedForRest()).isTrue();
+            // 자동 삽입 휴식은 AI 추가 제안과 구분돼야 한다.
+            assertThat(rest.addedByAi()).isFalse();
+            assertThat(rest.title()).isEqualTo("카페-cafe1");
+            assertThat(rest.reason()).contains("오르막");
+            assertThat(rest.startTime()).isNotNull();
+            assertThat(rest.endTime()).isEqualTo(rest.startTime().plusMinutes(30));
+            assertThat(items).filteredOn(item -> !item.contentId().equals("cafe1"))
+                    .allSatisfy(item -> assertThat(item.addedForRest()).isFalse());
+        }
+
+        @Test
+        @DisplayName("자동 삽입된 휴식 스톱이 비교 지표의 장소 수·도보 시간에 반영된다")
+        void restStopIsCountedInMetrics() {
+            // given - 첫 호출은 후보 없음(휴식 미삽입) 기준선, 두 번째 호출에서 카페를 준다.
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby(), nearby(cafe("cafe1", 127.011)));
+            VariantMetrics withoutRest = itineraryService
+                    .generate(USER_ID, transitRequest())
+                    .variants().get(0).metrics();
+
+            // when
+            VariantMetrics withRest = itineraryService
+                    .generate(USER_ID, transitRequest())
+                    .variants().get(0).metrics();
+
+            // then - 휴식 스톱을 되짚지 못하면 그 스톱을 낀 구간이 통째로 지표에서 빠진다.
+            assertThat(withRest.placeCount()).isEqualTo(withoutRest.placeCount() + 1);
+            // 전 구간이 도보 경계 안이라 도보 시간 합은 총 이동 시간과 같아야 한다.
+            // 휴식 스톱 구간이 빠지면 이 등식이 깨진다.
+            assertThat(withRest.totalWalkingMinutes()).isEqualTo(withRest.totalTravelMinutes());
+            // 스톱이 하나 늘어 구간이 쪼개지므로 도보 시간은 줄어들 수 없다.
+            assertThat(withRest.totalWalkingMinutes())
+                    .isGreaterThanOrEqualTo(withoutRest.totalWalkingMinutes());
+            assertThat(withRest.totalTransitCost()).isNotNull();
+            assertThat(withRest.unavailableReasons()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("휴식 스톱을 끼워 넣으면 뒤따르는 스톱의 방문 시각이 밀린다")
+        void shiftsFollowingVisitTimes() {
+            // given - 첫 호출은 후보 없음(휴식 미삽입) 기준선, 두 번째 호출에서 카페를 준다.
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby(), nearby(cafe("cafe1", 127.011)));
+            LocalTime lastStartWithoutRest = itineraryService
+                    .generate(USER_ID, transitRequest())
+                    .days().get(0).items().get(3).startTime();
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, transitRequest());
+
+            // then
+            List<ItineraryGenerateResponse.Item> items = response.days().get(0).items();
+            assertThat(items.get(2).contentId()).isEqualTo("c3");
+            assertThat(items.get(4).contentId()).isEqualTo("c4");
+            assertThat(items.get(4).startTime()).isAfter(lastStartWithoutRest.plusMinutes(29));
+        }
+
+        @Test
+        @DisplayName("근처에 카페가 없으면 휴식 스톱 없이 일정을 그대로 생성한다")
+        void noCafeNearby_keepsItineraryAsIs() {
+            // given
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby());
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, transitRequest());
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "c4");
+        }
+
+        @Test
+        @DisplayName("근처 조회가 예외를 던져도 휴식 스톱 없이 일정 생성은 성공한다")
+        void nearbyLookupFailure_keepsItineraryAsIs() {
+            // given
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willThrow(new IllegalStateException("TourAPI 장애"));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, transitRequest());
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "c4");
+        }
+
+        @Test
+        @DisplayName("이미 그날 일정에 있는 장소는 휴식 스톱으로 다시 넣지 않는다")
+        void skipsPlaceAlreadyInItinerary() {
+            // given - 근처 1순위가 이미 일정에 있는 c2 다.
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby(cafe("c2", longitudeOf("c2")), cafe("cafe1", 127.011)));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, transitRequest());
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "cafe1", "c4");
+        }
+
+        @Test
+        @DisplayName("자동차 안에는 휴식 스톱을 넣지 않는다")
+        void carVariantHasNoRestStop() {
+            // given
+            givenUphillWalkingCourse();
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(
+                    USER_ID, new GenerateItineraryRequest(null, "c1", List.of(TravelMode.CAR)));
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "c4");
+            verify(contentService, never()).getNearbyContents(anyString(), anyDouble(), anyInt());
+        }
+
+        @Test
+        @DisplayName("고도 조회는 일정안 수와 무관하게 한 번만 한다")
+        void resolvesElevationOnceRegardlessOfVariantCount() {
+            // given
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby());
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID,
+                    new GenerateItineraryRequest(null, "c1", List.of(TravelMode.CAR, TravelMode.TRANSIT)));
+
+            // then
+            assertThat(response.variants()).hasSize(2);
+            verify(elevationResolver, times(1)).resolve(any());
+        }
+
+        @Test
+        @DisplayName("고도를 하나도 모르면 휴식 스톱 없이 기존과 같은 일정이 나온다")
+        void unknownElevations_keepsPreviousItinerary() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 1, "c1", "c2", "c3", "c4");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> openAllDay(invocation.getArgument(0)));
+            given(aiItineraryClient.generate(any())).willReturn(fourPlaceResult());
+            given(elevationResolver.resolve(any())).willReturn(ElevationProfile.unknown());
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, transitRequest());
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "c4");
+            verify(contentService, never()).getNearbyContents(anyString(), anyDouble(), anyInt());
+        }
+
+        @Test
+        @DisplayName("자동 삽입된 휴식 스톱도 저장·수정 흐름을 그대로 통과한다")
+        void restStopPassesSaveAndModifyFlow() {
+            // given
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby(cafe("cafe1", 127.011)));
+            given(itineraryRepository.save(any(Itinerary.class)))
+                    .willAnswer(invocation -> invocation.getArgument(0));
+            ItineraryGenerateResponse generated = itineraryService.generate(USER_ID, transitRequest());
+
+            // when
+            ItineraryResponse saved = itineraryService.save(USER_ID, toSaveRequest(generated));
+
+            // then
+            assertThat(saved.days().get(0).items())
+                    .extracting(ItineraryResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "cafe1", "c4");
+            ItineraryResponse.Item rest = saved.days().get(0).items().get(3);
+            assertThat(rest.title()).isEqualTo("카페-cafe1");
+            assertThat(rest.reason()).contains("오르막");
+            assertThat(rest.startTime()).isNotNull();
+            assertThat(rest.endTime()).isNotNull();
+
+            // and - 수정 흐름도 같은 요청 형식을 그대로 받는다.
+            Itinerary owned = itineraryOwnedBy(USER_ID);
+            given(itineraryRepository.findWithDaysById(ITINERARY_ID)).willReturn(Optional.of(owned));
+            ItineraryResponse modified =
+                    itineraryService.modify(USER_ID, ITINERARY_ID, toSaveRequest(generated));
+            assertThat(modified.days().get(0).items())
+                    .extracting(ItineraryResponse.Item::contentId)
+                    .containsExactly("c1", "c2", "c3", "cafe1", "c4");
+        }
+
+        /** 미리보기 응답을 클라이언트가 그대로 저장 요청으로 되돌려 보내는 흐름을 재현한다. */
+        private SaveItineraryRequest toSaveRequest(ItineraryGenerateResponse generated) {
+            return new SaveItineraryRequest(
+                    generated.title(), generated.region(), generated.travelDate(), generated.duration(),
+                    generated.days().stream()
+                            .map(day -> new SaveItineraryRequest.DayRequest(
+                                    day.dayIndex(),
+                                    day.items().stream()
+                                            .map(item -> new SaveItineraryRequest.ItemRequest(
+                                                    item.contentId(), item.title(), item.order(), item.reason(),
+                                                    false, item.startTime(), item.endTime()))
+                                            .toList(),
+                                    day.totalTravelMinutes(),
+                                    BigDecimal.valueOf(day.totalTravelKm())))
+                            .toList());
         }
     }
 

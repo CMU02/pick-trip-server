@@ -76,3 +76,6 @@ itinerary:
   cost:
     car-cost-per-km-won: 142
     transit-base-fare-won: 1500
+
+elevation:
+  base-url: http://localhost
