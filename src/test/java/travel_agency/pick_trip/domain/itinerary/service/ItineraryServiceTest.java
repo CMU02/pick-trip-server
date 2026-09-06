@@ -13,6 +13,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.Collection;
 import java.time.LocalDate;
@@ -33,6 +34,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.MockedStatic;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Pageable;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
@@ -49,6 +51,7 @@ import travel_agency.pick_trip.domain.content.entity.CongestionLevel;
 import travel_agency.pick_trip.domain.content.service.CongestionService;
 import travel_agency.pick_trip.domain.content.service.ContentService;
 import travel_agency.pick_trip.domain.content.service.RoadMatrixResolver;
+import travel_agency.pick_trip.domain.itinerary.config.ItineraryCostProperties;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
@@ -62,6 +65,7 @@ import travel_agency.pick_trip.domain.itinerary.repository.ItineraryRepository;
 import travel_agency.pick_trip.domain.itinerary.scheduling.ItineraryPlanner;
 import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMatrix;
 import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
+import travel_agency.pick_trip.domain.itinerary.scheduling.VariantMetrics;
 import travel_agency.pick_trip.domain.region.Region;
 import travel_agency.pick_trip.domain.share.entity.ShareToken;
 import travel_agency.pick_trip.domain.share.repository.ShareTokenRepository;
@@ -87,6 +91,8 @@ class ItineraryServiceTest {
     @Mock private ShareTokenRepository shareTokenRepository;
     @Mock private CongestionService congestionService;
     @Mock private RoadMatrixResolver roadMatrixResolver;
+    // 설정값이라 mock 이 아닌 실제 값으로 주입해야 교통비 계산을 검증할 수 있다(application.yaml 기본값과 동일).
+    @Spy private ItineraryCostProperties costProperties = new ItineraryCostProperties(142, 1500);
     @InjectMocks private ItineraryService itineraryService;
 
     private static final UUID USER_ID = UUID.randomUUID();
@@ -815,6 +821,60 @@ class ItineraryServiceTest {
             assertThat(carMinutes).isLessThan(transitMinutes);
             // AI 는 안 개수와 무관하게 한 번만 호출한다.
             verify(aiItineraryClient).generate(any());
+        }
+
+        @Test
+        @DisplayName("안마다 비교 지표를 담고 이동수단에 따라 도보 시간·교통비 계산이 갈린다")
+        void buildsMetricsPerVariant() {
+            // given - 약 11.12km 떨어진 두 곳
+            twoPlacesApart();
+            GenerateItineraryRequest request = new GenerateItineraryRequest(
+                    null, null, List.of(TravelMode.CAR, TravelMode.TRANSIT));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, request);
+
+            // then
+            VariantMetrics car = response.variants().get(0).metrics();
+            assertThat(car.placeCount()).isEqualTo(2);
+            assertThat(car.totalTravelMinutes()).isEqualTo(25);
+            // 자동차는 주차 후 도보를 모델에 두지 않아 0 이며, 11.12km * 142원/km = 1,579원
+            assertThat(car.totalWalkingMinutes()).isZero();
+            assertThat(car.totalTransitCost()).isEqualTo(1579);
+
+            VariantMetrics transit = response.variants().get(1).metrics();
+            assertThat(transit.placeCount()).isEqualTo(2);
+            // 도보 한계(2km)를 넘는 구간이라 전부 승차이며 기본요금 한 번이 붙는다.
+            assertThat(transit.totalWalkingMinutes()).isZero();
+            assertThat(transit.totalTransitCost()).isEqualTo(1500);
+            assertThat(car.unavailableReasons()).isEmpty();
+            assertThat(transit.unavailableReasons()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("이동수단이 달라도 지표 JSON 키 집합이 같아 스플릿 뷰가 정렬된다")
+        void keepsSameMetricKeysAcrossVariants() throws Exception {
+            // given
+            twoPlacesApart();
+            GenerateItineraryRequest request = new GenerateItineraryRequest(
+                    null, null, List.of(TravelMode.CAR, TravelMode.TRANSIT));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, request);
+
+            // then - 산출 불가 지표도 키를 빼지 않고 null 로 내려야 열이 어긋나지 않는다.
+            List<Set<String>> keySets = response.variants().stream()
+                    .map(variant -> metricKeys(variant.metrics()))
+                    .toList();
+            assertThat(keySets).hasSize(2);
+            assertThat(keySets.get(0)).isEqualTo(keySets.get(1))
+                    .containsExactlyInAnyOrder("totalTravelMinutes", "totalWalkingMinutes",
+                            "totalTransitCost", "placeCount", "unavailableReasons");
+        }
+
+        @SuppressWarnings("unchecked")
+        private Set<String> metricKeys(VariantMetrics metrics) {
+            return ((Map<String, Object>) new ObjectMapper().convertValue(metrics, Map.class)).keySet();
         }
 
         @Test

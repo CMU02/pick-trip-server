@@ -10,6 +10,7 @@ import travel_agency.pick_trip.domain.basket.entity.Basket;
 import travel_agency.pick_trip.domain.basket.entity.BasketItem;
 import travel_agency.pick_trip.domain.itinerary.scheduling.PlannedItinerary;
 import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
+import travel_agency.pick_trip.domain.itinerary.scheduling.VariantMetrics;
 import travel_agency.pick_trip.domain.region.Region;
 
 /**
@@ -40,13 +41,16 @@ public record ItineraryGenerateResponse(
      * @param title       AI 가 지은 일정 제목 (안 사이에 같다)
      * @param days        이 안의 일차별 일정. 이동수단마다 소요 시간 모델이 달라 순서·배분이 달라진다.
      * @param adjustments AI 원안을 제약으로 보정한 내역
+     * @param metrics     안끼리 비교하는 지표. 모든 안이 같은 키 집합을 반환하며,
+     *                    산출할 수 없는 지표는 값이 null 이고 사유 코드가 함께 온다.
      */
     public record Variant(
             String label,
             TravelMode travelMode,
             String title,
             List<Day> days,
-            List<String> adjustments
+            List<String> adjustments,
+            VariantMetrics metrics
     ) {
     }
 
@@ -108,8 +112,11 @@ public record ItineraryGenerateResponse(
      * 스케줄링 결과에 플래그를 심지 않고 여기서 계산한다.
      *
      * @param plannedByMode 요청한 이동수단 순서를 유지하는 맵(LinkedHashMap). 첫 항목이 최상위 필드로도 복제된다.
+     * @param metricsByMode 같은 키 집합을 갖는 이동수단별 비교 지표
      */
-    public static ItineraryGenerateResponse from(Basket basket, Map<TravelMode, PlannedItinerary> plannedByMode) {
+    public static ItineraryGenerateResponse from(Basket basket,
+                                                 Map<TravelMode, PlannedItinerary> plannedByMode,
+                                                 Map<TravelMode, VariantMetrics> metricsByMode) {
         Map<String, String> titleByContentId = basket.getItems().stream()
                 .collect(Collectors.toMap(
                         BasketItem::getContentId,
@@ -123,7 +130,8 @@ public record ItineraryGenerateResponse(
                         entry.getKey(),
                         entry.getValue().title(),
                         toDays(entry.getValue(), titleByContentId),
-                        entry.getValue().adjustments()))
+                        entry.getValue().adjustments(),
+                        metricsByMode.get(entry.getKey())))
                 .toList();
 
         // 안이 하나도 없는 경우는 요청 정규화(최소 1개) 때문에 나오지 않지만, 최상위 필드가 null 로 새지 않게 막는다.
