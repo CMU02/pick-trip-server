@@ -30,7 +30,7 @@ public class OpenAiItineraryClient implements AiItineraryClient {
 
             다음 제약을 반드시 지키세요.
             - 각 장소의 운영시간(useTime)과 휴무일(restDate)을 고려해 방문 시간대를 배치합니다.
-            - 좌표(latitude, longitude)를 활용해 하루 안의 이동 동선이 자연스럽도록 인접한 장소를 묶습니다.
+            - 지리적으로 가까운 장소끼리 같은 일차에 묶습니다. 세부 동선과 순서는 서버가 좌표로 다시 최적화합니다.
             - 우선순위가 "꼭 가기"인 장소는 반드시 포함하고 우선 배치합니다.
             - 동행·여행 스타일 조건을 고려해 걷기 부담·실내외 비율을 조정합니다.
             - 여행 기간(duration)에 맞춰 일차(dayIndex)를 1부터 나눕니다.

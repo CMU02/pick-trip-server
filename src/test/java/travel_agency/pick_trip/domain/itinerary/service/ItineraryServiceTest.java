@@ -210,6 +210,37 @@ class ItineraryServiceTest {
                     .isEqualTo(ErrorCode.ITINERARY_INPUT_INSUFFICIENT);
             verify(aiItineraryClient, never()).generate(any());
         }
+
+        @Test
+        @DisplayName("시작 지점이 바구니에 없으면 ITINERARY_INPUT_INSUFFICIENT 예외를 던진다")
+        void startContentIdOutsideBasket_throws() {
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+
+            ThrowingCallable action = () -> itineraryService.generate(
+                    USER_ID, new GenerateItineraryRequest(GenerateMode.STRICT, "x9"));
+
+            assertThatThrownBy(action)
+                    .isInstanceOf(PickTripException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.ITINERARY_INPUT_INSUFFICIENT);
+            verify(aiItineraryClient, never()).generate(any());
+        }
+
+        @Test
+        @DisplayName("시작 지점이 바구니에 있으면 검증을 통과해 일정을 생성한다")
+        void startContentIdInBasket_passes() {
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> detail(invocation.getArgument(0)));
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+
+            ItineraryGenerateResponse response = itineraryService.generate(
+                    USER_ID, new GenerateItineraryRequest(GenerateMode.STRICT, "c2"));
+
+            assertThat(response.days().get(0).items().get(0).contentId()).isEqualTo("c2");
+        }
     }
 
     @Nested
@@ -304,7 +335,7 @@ class ItineraryServiceTest {
             given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
 
             try (MockedStatic<ItineraryPlanner> planner = mockStatic(ItineraryPlanner.class)) {
-                planner.when(() -> ItineraryPlanner.plan(any(), any(), any(), any(), any()))
+                planner.when(() -> ItineraryPlanner.plan(any(), any(), any(), any(), any(), any()))
                         .thenThrow(new IllegalStateException("스케줄링 붕괴"));
 
                 // when
@@ -498,9 +529,11 @@ class ItineraryServiceTest {
 
             // then
             List<ItineraryGenerateResponse.Item> items = response.days().get(0).items();
+            // 방문 순서는 서버가 좌표로 다시 정하므로(테스트 상세는 좌표가 모두 같아 "꼭 가기"가 먼저 잡힌다)
+            // 여기서는 AUGMENT 로 추가된 장소가 일정에 남았는지만 본다.
             assertThat(items)
                     .extracting(ItineraryGenerateResponse.Item::contentId)
-                    .containsExactly("c1", "x9", "c2");
+                    .containsExactlyInAnyOrder("c1", "x9", "c2");
             assertThat(items)
                     .filteredOn(item -> item.contentId().equals("x9"))
                     .singleElement()

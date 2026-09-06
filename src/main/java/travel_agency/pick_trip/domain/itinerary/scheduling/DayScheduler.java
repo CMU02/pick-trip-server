@@ -24,13 +24,31 @@ public final class DayScheduler {
 
     private static final DateTimeFormatter HH_MM = DateTimeFormatter.ofPattern("HH:mm");
 
+    /**
+     * 2-opt 개선 패스 상한. 한 패스가 O(n^2) 번의 시뮬레이션이라 상한이 없으면 응답 시간을 보장할 수 없다.
+     * 하루 장소가 수십 개인 소도시 일정에서는 보통 서너 패스 안에 더 나아지지 않으므로 20이면 충분히 여유롭다.
+     */
+    private static final int MAX_TWO_OPT_PASSES = 20;
+
     private DayScheduler() {
     }
 
+    /** 시작 지점 지정이 없는 호출. 앵커 고정 없이 기존과 동일하게 동작한다. */
     public static ScheduledDay schedule(int dayIndex,
                                         LocalDate date,
                                         List<SchedulingPlace> places,
                                         Map<String, String> reasonByContentId) {
+        return schedule(dayIndex, date, places, reasonByContentId, null);
+    }
+
+    /**
+     * @param anchorContentId 이 일차의 첫 스톱으로 고정할 시작 지점. 이 일차에 없으면 무시한다.
+     */
+    public static ScheduledDay schedule(int dayIndex,
+                                        LocalDate date,
+                                        List<SchedulingPlace> places,
+                                        Map<String, String> reasonByContentId,
+                                        String anchorContentId) {
         List<SchedulingPlace> source = (places == null)
                 ? List.of()
                 : places.stream().filter(Objects::nonNull).toList();
@@ -39,7 +57,7 @@ public final class DayScheduler {
         }
 
         Map<String, String> reasons = (reasonByContentId == null) ? Map.of() : reasonByContentId;
-        List<SchedulingPlace> ordered = bestOrder(source);
+        List<SchedulingPlace> ordered = bestOrder(source, anchorContentId);
         Simulation sim = simulate(ordered);
 
         List<ScheduledStop> stops = new ArrayList<>(ordered.size());
@@ -78,27 +96,55 @@ public final class DayScheduler {
     }
 
     /**
+     * 최선의 방문 순서를 고른다.
+     * 시작 지점이 이 일차에 있으면 첫 자리에 고정하고 나머지 자리만 탐색한다.
+     * 7개 이하는 전순열로 전역 최적을, 8개 이상은 nearest-neighbor 초기해 + 2-opt 로 근사한다.
+     */
+    private static List<SchedulingPlace> bestOrder(List<SchedulingPlace> source, String anchorContentId) {
+        int anchorIndex = indexOf(source, anchorContentId);
+        List<SchedulingPlace> ordered = (anchorIndex <= 0) ? source : moveToFront(source, anchorIndex);
+        // 앵커가 있으면 0번 자리는 탐색 대상에서 뺀다.
+        int fixed = (anchorIndex >= 0) ? 1 : 0;
+        if (ordered.size() - fixed <= 1) {
+            return ordered;
+        }
+
+        if (ordered.size() <= SchedulingPolicy.MAX_REORDER_STOPS) {
+            return bestByPermutation(ordered, fixed);
+        }
+
+        // 8개부터는 순열 수가 4만을 넘어 요청 응답 시간 안에 감당할 수 없다.
+        // 대신 좌표 기반 nearest-neighbor 로 초기해를 만들고 2-opt 로 다듬는다.
+        // ponytail: 초기해 하나에서만 2-opt 를 돌려 지역 최적에 갇힐 수 있다.
+        // 하루 8개 이상은 드문 입력이라 이 정도로 두고, 실제 품질 불만이 나오면 or-opt·다중 시작점을 얹는다.
+        List<SchedulingPlace> initial = RouteOptimizer.nearestNeighborOrder(ordered, anchorContentId);
+        if (fixed == 1) {
+            // 앵커에 좌표가 없으면 nearest-neighbor 가 뒤로 밀어버리므로 첫 자리로 되돌린다.
+            initial = moveToFront(initial, indexOf(initial, anchorContentId));
+        }
+        return twoOpt(initial, fixed);
+    }
+
+    /**
      * 전순열을 (하드 위반 수, 총 이동분) 으로 평가해 최선의 순서를 고른다.
      * 항등 순열부터 사전식으로 탐색하고 개선이 있을 때만 교체하므로, 동점이면 AI 원안이 남는다.
      */
-    private static List<SchedulingPlace> bestOrder(List<SchedulingPlace> source) {
-        int n = source.size();
-        if (n > SchedulingPolicy.MAX_REORDER_STOPS) {
-            // 8개부터는 순열 수가 4만을 넘어 요청 응답 시간 안에 감당할 수 없다.
-            return source;
+    private static List<SchedulingPlace> bestByPermutation(List<SchedulingPlace> ordered, int fixed) {
+        int n = ordered.size();
+        int[] indexes = new int[n - fixed];
+        for (int i = 0; i < indexes.length; i++) {
+            indexes[i] = fixed + i;
         }
 
-        int[] indexes = new int[n];
-        for (int i = 0; i < n; i++) {
-            indexes[i] = i;
-        }
-
-        List<SchedulingPlace> best = source;
-        Simulation bestSim = simulate(source);
+        List<SchedulingPlace> best = ordered;
+        Simulation bestSim = simulate(ordered);
         while (nextPermutation(indexes)) {
             List<SchedulingPlace> candidate = new ArrayList<>(n);
+            for (int i = 0; i < fixed; i++) {
+                candidate.add(ordered.get(i));
+            }
             for (int index : indexes) {
-                candidate.add(source.get(index));
+                candidate.add(ordered.get(index));
             }
             Simulation sim = simulate(candidate);
             if (isBetter(sim, bestSim)) {
@@ -107,6 +153,69 @@ public final class DayScheduler {
             }
         }
         return best;
+    }
+
+    /**
+     * 구간을 뒤집어(2-opt) 더 나은 순서를 찾는다. 평가는 전순열 경로와 같은 simulate/isBetter 를 쓴다.
+     * 개선이 없으면 즉시 멈추고, 그렇지 않아도 {@link #MAX_TWO_OPT_PASSES} 패스에서 끊는다.
+     */
+    private static List<SchedulingPlace> twoOpt(List<SchedulingPlace> initial, int fixed) {
+        List<SchedulingPlace> best = initial;
+        Simulation bestSim = simulate(best);
+
+        for (int pass = 0; pass < MAX_TWO_OPT_PASSES; pass++) {
+            boolean improved = false;
+            for (int i = fixed; i < best.size() - 1; i++) {
+                for (int j = i + 1; j < best.size(); j++) {
+                    List<SchedulingPlace> candidate = reversed(best, i, j);
+                    Simulation sim = simulate(candidate);
+                    if (isBetter(sim, bestSim)) {
+                        best = candidate;
+                        bestSim = sim;
+                        improved = true;
+                    }
+                }
+            }
+            if (!improved) {
+                break;
+            }
+        }
+        return best;
+    }
+
+    /** [from, to] 구간만 뒤집은 새 리스트. */
+    private static List<SchedulingPlace> reversed(List<SchedulingPlace> source, int from, int to) {
+        List<SchedulingPlace> result = new ArrayList<>(source);
+        for (int left = from, right = to; left < right; left++, right--) {
+            SchedulingPlace tmp = result.get(left);
+            result.set(left, result.get(right));
+            result.set(right, tmp);
+        }
+        return result;
+    }
+
+    private static List<SchedulingPlace> moveToFront(List<SchedulingPlace> source, int index) {
+        List<SchedulingPlace> result = new ArrayList<>(source.size());
+        result.add(source.get(index));
+        for (int i = 0; i < source.size(); i++) {
+            if (i != index) {
+                result.add(source.get(i));
+            }
+        }
+        return result;
+    }
+
+    /** 없으면 -1. contentId 가 null 이면(= 시작 지점 미지정) 탐색하지 않는다. */
+    private static int indexOf(List<SchedulingPlace> source, String contentId) {
+        if (contentId == null) {
+            return -1;
+        }
+        for (int i = 0; i < source.size(); i++) {
+            if (contentId.equals(source.get(i).contentId())) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     private static boolean isBetter(Simulation candidate, Simulation best) {
