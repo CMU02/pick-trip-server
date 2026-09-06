@@ -102,18 +102,53 @@
 ```json
 {
   "mode": "STRICT",
-  "startContentId": "773075"
+  "startContentId": "773075",
+  "travelModes": ["CAR", "TRANSIT"]
 }
 ```
 
 | 필드   | 타입   | 기본값     | 설명                                                          |
 | ------ | ------ | ---------- | ------------------------------------------------------------- |
 | `mode` | enum   | `STRICT`   | `STRICT` = 바구니에 담은 장소만으로 구성. `AUGMENT` = AI 가 같은 지역의 적재 콘텐츠를 추가 제안할 수 있음 |
+| `travelModes` | enum 배열 | `["CAR"]` | 만들 일정안의 이동수단. `CAR`(자동차) · `TRANSIT`(대중교통). 모드마다 일정안이 하나씩 나오며, 중복은 제거하고 최대 4개까지만 만든다. 미지정·빈 배열이면 기존과 같은 자동차 단일안이다 |
 | `startContentId` | string | 없음 | 여행을 시작할 바구니 항목의 `contentId`. 일차 배분과 하루 순서 최적화는 이 값과 무관하게 항상 수행하며(AI 배분은 초기값), 이 값은 앵커 고정 여부만 결정한다. 지정하면 그 장소에서 동선을 시작해 해당 일차의 첫 스톱으로 고정하고, 미지정이면 첫 스톱도 최적화 대상이 된다. 바구니에 없는 값이면 `ITINERARY_INPUT_INSUFFICIENT` |
 
 `AUGMENT` 에서는 같은 지역의 유효 콘텐츠 후보를 AI 프롬프트에 함께 실어 보내고, 응답으로 돌아온 장소 중 DB 에 없거나 다른 지역인 것은 서버가 제거한다. 추가된 장소는 응답 항목의 `addedByAi` 가 `true` 이며, 사용자가 저장 전에 제거할 수 있다.
 
-`POST /api/v1/itineraries/generate` 응답 최상위에는 혼잡 기반 순서변경 제안 `suggestions` 배열이 있다 (제안이 없으면 빈 배열).
+응답에는 이동수단별 일정안이 `variants` 배열로 담긴다.
+
+```jsonc
+{
+  "title": "...",        // = variants[0].title
+  "region": "HADONG",
+  "travelDate": "2026-10-01",
+  "duration": 2,
+  "days": [],            // = variants[0].days
+  "adjustments": [],     // = variants[0].adjustments
+  "suggestions": [],     // 최상위 유지
+  "variants": [
+    { "label": "자동차 힐링 루트", "travelMode": "CAR", "title": "...", "days": [], "adjustments": [] }
+  ]
+}
+```
+
+**하위호환 규칙**: 최상위 `title`·`days`·`adjustments` 는 `variants[0]` 의 값을 그대로 복제한 것이다.
+`variants` 를 모르는 기존 클라이언트는 지금까지처럼 최상위 필드만 읽으면 되고, 이동수단을 지정하지 않으면
+`variants` 는 자동차 안 하나뿐이라 기존 응답과 내용이 같다.
+
+각 `variants` 항목의 필드는 `label`(사용자 노출용 일정안 이름), `travelMode`, `title`, `days`, `adjustments` 다.
+
+이동시간 모델은 이동수단마다 다르다.
+
+- `CAR` — Kakao Mobility 여러 목적지 길찾기로 얻은 실제 도로 거리·소요 시간을 쓴다. 길찾기가 실패하거나
+  기준점 반경 10km 를 벗어나 응답에서 빠진 구간은 직선거리 × 우회 계수(1.3) ÷ 평균 속도로 폴백한다.
+  이때 평균 속도는 실측에 성공한 구간에서 관측한 값을 쓰고, 성공한 구간이 하나도 없으면 35km/h 를 쓴다.
+- `TRANSIT` — 실제 이동 거리 2.0km(`WALK_MAX_KM`) 이하는 도보 3.5km/h, 그보다 먼 구간은 대기 15분 +
+  시내버스 25km/h 로 환산한다. 노선·배차를 모르는 근사이며 대중교통 길찾기 API 연동 시 실측으로 교체한다.
+
+일정안이 여러 개여도 AI 는 한 번만 호출한다. 같은 AI 결과·같은 장소 집합으로 스케줄링만 이동수단별로 다시 돌린다.
+
+`POST /api/v1/itineraries/generate` 응답 최상위에는 혼잡 기반 순서변경 제안 `suggestions` 배열이 있다 (제안이 없으면 빈 배열). 제안은 첫 번째 안(`variants[0]`)의 확정 시각을 기준으로 만들며 최상위에만 둔다.
 
 - `type` — 제안 종류. 현재는 `CONGESTION_REORDER` 뿐이다.
 - `message` — 사용자에게 보여줄 한국어 문장.
