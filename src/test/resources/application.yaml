@@ -65,6 +65,9 @@ tour-api:
   photo-base-url: http://localhost
   service-key: ci-dummy-tour-api-key
 
+visitor-stats:
+  base-url: http://localhost
+
 kakao-mobility:
   base-url: http://localhost
   rest-api-key: ci-dummy-kakao-rest-api-key
