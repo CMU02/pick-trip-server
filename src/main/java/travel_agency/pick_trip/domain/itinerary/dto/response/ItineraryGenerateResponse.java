@@ -100,7 +100,10 @@ public record ItineraryGenerateResponse(
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime,
             List<String> notes,
             // 바구니에 없던 장소를 AI 가 추가 제안한 경우 true (AUGMENT 모드). 사용자가 저장 전 제거할 수 있다.
-            boolean addedByAi
+            boolean addedByAi,
+            // 도보 부담이 쌓여 서버가 체력 안배로 자동 삽입한 휴식 스톱이면 true. 삽입 이유는 reason 에 담긴다.
+            // AI 추가 제안(addedByAi)과 구분해야 클라이언트가 두 종류를 다르게 안내할 수 있다.
+            boolean addedForRest
     ) {
     }
 
@@ -161,7 +164,9 @@ public record ItineraryGenerateResponse(
                                         stop.startTime(),
                                         stop.endTime(),
                                         stop.notes(),
-                                        !titleByContentId.containsKey(stop.contentId())
+                                        // 휴식 스톱도 바구니 밖 장소지만 AI 가 고른 것이 아니므로 addedByAi 는 아니다.
+                                        !stop.autoRest() && !titleByContentId.containsKey(stop.contentId()),
+                                        stop.autoRest()
                                 ))
                                 .toList(),
                         day.date(),

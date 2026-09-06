@@ -67,9 +67,9 @@ public final class VariantMetricsCalculator {
                 if (!transit) {
                     continue;
                 }
-                // 도보/승차 경계는 TravelTimeEstimator 가 소요 시간을 나눌 때와 같아야 한다.
-                // 다른 상수를 쓰면 "도보 40분"인데 요금이 붙는 식으로 지표끼리 어긋난다.
-                if (leg.km() * SchedulingPolicy.DETOUR_FACTOR <= SchedulingPolicy.WALK_MAX_KM) {
+                // 도보/승차 판정은 소요 시간을 나눌 때와 같은 술어를 써야 한다. 경계가 갈라지면
+                // "도보 40분"인데 요금이 붙는 식으로 지표끼리 어긋난다.
+                if (TravelTimeEstimator.isWalkLeg(leg.km(), context.travelMode())) {
                     walkingMinutes += leg.minutes();
                 } else {
                     boardings++;

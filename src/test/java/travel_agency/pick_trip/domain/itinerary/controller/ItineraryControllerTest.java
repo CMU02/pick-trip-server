@@ -93,7 +93,7 @@ class ItineraryControllerTest {
                     List.of(new ItineraryGenerateResponse.Day(1, List.of(
                             new ItineraryGenerateResponse.Item(
                                     "c1", "쌍계사", 1, "오전 배치",
-                                    LocalTime.of(9, 0), LocalTime.of(10, 30), List.of(), false)
+                                    LocalTime.of(9, 0), LocalTime.of(10, 30), List.of(), false, false)
                     ), LocalDate.of(2026, 7, 1), 0, 0.0, List.of())),
                     List.of(),
                     List.of(),
