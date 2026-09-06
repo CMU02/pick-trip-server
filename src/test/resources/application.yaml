@@ -71,3 +71,8 @@ visitor-stats:
 kakao-mobility:
   base-url: http://localhost
   rest-api-key: ci-dummy-kakao-rest-api-key
+
+itinerary:
+  cost:
+    car-cost-per-km-won: 142
+    transit-base-fare-won: 1500
