@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
 import travel_agency.pick_trip.domain.basket.entity.BasketItem;
+import travel_agency.pick_trip.domain.basket.entity.Priority;
 import travel_agency.pick_trip.domain.basket.entity.TravelCondition;
 import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
@@ -104,6 +105,7 @@ public class ItineraryService {
                 .orElseThrow(() -> new ItineraryException(ErrorCode.ITINERARY_INPUT_INSUFFICIENT));
 
         validateInput(basket);
+        validateStartContent(basket, generateRequest.startContentId());
 
         boolean augment = generateRequest.mode() == GenerateMode.AUGMENT;
         List<AiPlace> places = new ArrayList<>(basket.getItems().stream()
@@ -130,8 +132,8 @@ public class ItineraryService {
         // 화이트리스트 필터와 이유 문구 정제를 먼저 통과시킨 뒤 스케줄링한다.
         // 스케줄러가 AI 원문을 그대로 받으면 걸러졌어야 할 장소에 시각까지 배정된다.
         AiItineraryResult cleaned = sanitizeReasons(filterToKnownContents(result, places));
-        ItineraryGenerateResponse response =
-                ItineraryGenerateResponse.from(basket, toPlanned(cleaned, places, basket.getTravelDate()));
+        ItineraryGenerateResponse response = ItineraryGenerateResponse.from(basket,
+                toPlanned(cleaned, places, basket.getTravelDate(), generateRequest.startContentId()));
         return response.withSuggestions(buildCongestionSuggestions(response));
     }
 
@@ -356,6 +358,19 @@ public class ItineraryService {
         }
     }
 
+    /**
+     * 시작 지점은 바구니에 담긴 장소여야 한다. AI 추가 제안(AUGMENT) 장소는 응답을 받기 전이라 알 수 없고,
+     * 사용자가 고를 수 있는 대상도 바구니뿐이다.
+     */
+    private void validateStartContent(Basket basket, String startContentId) {
+        if (startContentId == null) {
+            return;
+        }
+        if (!basketContentIds(basket).contains(startContentId)) {
+            throw new ItineraryException(ErrorCode.ITINERARY_INPUT_INSUFFICIENT);
+        }
+    }
+
     private Itinerary findOwned(UUID userId, UUID itineraryId) {
         Itinerary itinerary = itineraryRepository.findWithDaysById(itineraryId)
                 .orElseThrow(() -> new ItineraryException(ErrorCode.ITINERARY_NOT_FOUND));
@@ -414,7 +429,8 @@ public class ItineraryService {
      * AI 원안을 영업시간·이동시간 제약이 반영된 확정 일정으로 바꾼다.
      * 스케줄링이 깨져 일정 생성 전체가 실패하는 편이 사용자에게 더 손해이므로, 실패 시 AI 순서를 그대로 쓰는 형태로 폴백한다.
      */
-    private PlannedItinerary toPlanned(AiItineraryResult result, List<AiPlace> places, LocalDate travelDate) {
+    private PlannedItinerary toPlanned(AiItineraryResult result, List<AiPlace> places, LocalDate travelDate,
+                                       String startContentId) {
         try {
             // AI 입력을 만들 때 이미 콘텐츠 상세를 보강해뒀으므로 여기서 다시 조회하지 않는다.
             Map<String, SchedulingPlace> placesById = places.stream()
@@ -424,7 +440,8 @@ public class ItineraryService {
                             (first, ignored) -> first,
                             LinkedHashMap::new));
             return ItineraryPlanner.plan(
-                    result.title(), toDayContentIds(result), placesById, toReasonByContentId(result), travelDate);
+                    result.title(), toDayContentIds(result), placesById, toReasonByContentId(result), travelDate,
+                    startContentId);
         } catch (Exception e) {
             log.warn("일정 스케줄링에 실패해 AI 순서를 그대로 사용합니다.", e);
             return unscheduled(result, places);
@@ -440,7 +457,9 @@ public class ItineraryService {
                 place.latitude(),
                 place.longitude(),
                 OperatingHoursParser.parse(place.useTime(), place.restDate()),
-                StayDurationPolicy.stayMinutes(contentTypeId)
+                StayDurationPolicy.stayMinutes(contentTypeId),
+                // AiPlace 는 우선순위를 한국어 라벨로만 들고 있다(AUGMENT 로 추가된 장소는 null 이라 false).
+                Priority.MUST_VISIT.getLabel().equals(place.priority())
         );
     }
 
