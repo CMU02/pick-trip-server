@@ -39,6 +39,7 @@ PickTrip 서버는 경상도 소도시(하동, 영주, 예천) 여행 일정 생
 | 도메인 모델              | `.agents/docs/domain-model.md`                                |
 | 지역별 콘텐츠 방향          | `.agents/docs/content-direction-by-region.md`                 |
 | Gradle 사용 가이드       | `.agents/docs/package-manager-guide.md`                       |
+| 고도 데이터 소스 선정      | `.agents/docs/elevation-source.md`                            |
 
 # Convention
 
@@ -201,6 +202,9 @@ src/main/java/travel_agency/pick_trip
 | 이동수단별 일정안은 기존 최상위 필드 유지 + `variants` 래핑 | 응답을 variant 배열로 바꾸면 기존 클라이언트가 전부 깨진다. `variants` 를 추가하고 최상위 `title`·`days`·`adjustments` 는 `variants[0]` 의 복제로 남겨 하위호환을 지킨다. `travelModes` 미지정이면 자동차 단일안이라 기존 응답과 내용이 같다. `suggestions`(혼잡 제안)는 첫 안 기준이라 최상위에 그대로 둔다. |
 | `CAR` 은 Kakao 도로 행렬(origin 당 1콜), `TRANSIT` 은 도보/버스 근사 | 여러 목적지 길찾기는 1 origin → 최대 30 목적지를 1콜로 주므로 장소 s개의 전체 행렬을 s콜로 얻는다(인접 구간만 뽑는 것과 콜 수가 비슷하면서 순서 최적화에도 쓴다). `radius` 상한이 10km 라 그보다 먼 구간은 응답에서 빠지며, 그 구간은 실측 구간에서 관측한 평균 속도로 직선거리 폴백한다(실패해도 예외 없이, 재시도 없이). 대중교통은 노선·배차 데이터가 없어 도보 2km 경계로 3.5km/h · 25km/h + 대기 15분 근사를 쓰고, 자동차 도로 행렬은 조회하지 않는다. |
 | 교통비는 상수 기반 근사, 산출 불가는 `null`+사유 코드 | 지역 시내버스 요금 공개 API 가 없고 통행료·주차비 데이터도 없어, 유가·기본요금 상수(`itinerary.cost` 설정값)로 근사한다. 값을 못 내는 지표를 응답에서 빼면 스플릿 뷰 열이 어긋나므로, 키는 유지하고 값만 `null` 로 두면서 `unavailableReasons` 에 사유 코드를 담는다. |
+
+| 고도 조회는 OpenTopoData `srtm30m` | 이슈 후보였던 VWorld 는 좌표→고도 REST API 자체가 없고(3D DEM API 는 2019년 종료), Open-Elevation 은 데이터 없는 좌표를 0m 로 내려 고도 미상과 구분되지 않는다. OpenTopoData 는 키 없이 좌표 100개를 1콜로 조회하고 범위 밖은 null 이라 폴백 판정이 명확하다. 부하가 커지면 자체 호스팅으로 base-url 만 바꾼다. |
+| 고도 조회 실패는 예외 아님(고도 미상 폴백) + 재시도 없음 | 경사 페널티는 도보 일정의 보조 정보라 조회 실패로 일정 생성을 막을 이유가 없다. 고도 미상 구간은 상승고도 0·페널티 0 이 되어 기존 일정과 같아진다. |
 | 관광객수·혼잡도는 지역 통계 + 자체 프록시 근사 | 개별 장소 단위 관광객수를 주는 공개 데이터가 없어, 지역별 방문자수(공공데이터포털 15101972)와 바구니 담긴 횟수를 조합해 근사하고 응답에 `approximate=true` 로 표시한다. 수집은 Batch 없이 스케줄러가 서비스 메서드를 호출한다. |
 
 # AI Constraints

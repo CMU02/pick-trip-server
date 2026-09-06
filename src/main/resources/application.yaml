@@ -97,6 +97,12 @@ kakao-mobility:
   base-url: https://apis-navi.kakaomobility.com
   rest-api-key: ${KAKAO_CLIENT_ID}
 
+# 도보 일정 경사 페널티용 고도 조회 (OpenTopoData). 인증키가 없는 공개 엔드포인트라 키 설정이 없다.
+# 공개 엔드포인트는 초당 1콜·일 1,000콜 제한이 있으므로, 부하가 커지면 자체 호스팅 주소로 이 값만 바꾼다.
+# 선정 근거는 .agents/docs/elevation-source.md 참고.
+elevation:
+  base-url: https://api.opentopodata.org
+
 # 지역별 방문자수 (공공데이터포털 15101972, 한국관광 데이터랩). base-url 은 환경 무관 고정값이며
 # 인증키는 TourAPI 와 같은 PUBLIC_DATA_PORTAL_KEY(tour-api.service-key)를 재사용한다.
 # 아직 활용신청 전이라 호출이 실패할 수 있으며, 그때는 예외 없이 자체 프록시로 폴백한다.
