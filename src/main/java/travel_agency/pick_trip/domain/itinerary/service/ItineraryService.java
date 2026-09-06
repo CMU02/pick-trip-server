@@ -4,8 +4,10 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -14,6 +16,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
@@ -21,7 +24,11 @@ import travel_agency.pick_trip.domain.basket.entity.BasketItem;
 import travel_agency.pick_trip.domain.basket.entity.TravelCondition;
 import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
+import travel_agency.pick_trip.domain.content.entity.DataStatus;
+import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
 import travel_agency.pick_trip.domain.content.service.ContentService;
+import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
+import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryGenerateResponse;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryResponse;
@@ -58,40 +65,65 @@ public class ItineraryService {
     /** 일정 생성에 필요한 최소 콘텐츠 수. */
     private static final int MIN_CONTENTS = 2;
 
+    /**
+     * AUGMENT 모드에서 프롬프트에 실을 지역 추가 후보 수 상한.
+     * 후보 한 건이 프롬프트 두 줄이라 지역 콘텐츠를 전부 실으면 입력 토큰 비용이 그만큼 늘어난다.
+     * ponytail: contentId 오름차순 상위 N건만 실으므로 지역 콘텐츠가 이 수를 넘으면 뒤쪽은 후보에서 빠진다.
+     * 추천 다양성이 문제로 드러나면 인기·카테고리 기준 샘플링으로 바꾼다.
+     */
+    private static final int MAX_EXTRA_CANDIDATES = 80;
+
     private final BasketRepository basketRepository;
     private final ContentService contentService;
+    private final TravelContentRepository travelContentRepository;
     private final AiItineraryClient aiItineraryClient;
     private final ItineraryRepository itineraryRepository;
     private final ShareTokenRepository shareTokenRepository;
 
+    /** 바디 없이 호출한 기존 클라이언트를 위한 기본(STRICT) 생성. */
+    @Transactional(readOnly = true)
+    public ItineraryGenerateResponse generate(UUID userId) {
+        return generate(userId, GenerateItineraryRequest.defaults());
+    }
+
     /**
      * 사용자 바구니를 입력으로 AI 일정을 생성한다 (저장 전 미리보기).
+     * {@code AUGMENT} 모드에서는 AI 가 제안한 바구니 밖 장소도 허용하되, 같은 지역에 적재된 콘텐츠로만 한정한다.
      *
      * @throws ItineraryException 입력 조건이 부족하거나 AI 호출이 실패한 경우
      */
     @Transactional(readOnly = true)
-    public ItineraryGenerateResponse generate(UUID userId) {
+    public ItineraryGenerateResponse generate(UUID userId, GenerateItineraryRequest generateRequest) {
         Basket basket = basketRepository.findByUserId(userId)
                 .orElseThrow(() -> new ItineraryException(ErrorCode.ITINERARY_INPUT_INSUFFICIENT));
 
         validateInput(basket);
 
-        List<AiPlace> places = basket.getItems().stream()
+        boolean augment = generateRequest.mode() == GenerateMode.AUGMENT;
+        List<AiPlace> places = new ArrayList<>(basket.getItems().stream()
                 .map(this::toAiPlace)
-                .toList();
+                .toList());
 
         AiItineraryRequest request = new AiItineraryRequest(
                 basket.getRegion() == null ? null : basket.getRegion().getName(),
                 basket.getTravelDate(),
                 basket.getDuration(),
                 basket.getCompanions().stream().map(TravelCondition::getLabel).toList(),
-                places
+                List.copyOf(places),
+                // 후보를 주지 않으면 AI 는 실제 contentId 를 알 수 없어 추가 제안이 전부 화이트리스트에서 걸린다.
+                augment ? findExtraCandidates(basket) : List.of()
         );
 
         AiItineraryResult result = aiItineraryClient.generate(request);
-        // 바구니 필터와 이유 문구 정제를 먼저 통과시킨 뒤 스케줄링한다.
+        if (augment) {
+            // 화이트리스트를 "바구니 U 지역 내 유효 콘텐츠" 로 넓힌다. 스케줄링도 같은 목록을 쓰므로
+            // 추가된 장소에도 시각·이동 시간이 동일하게 배정된다.
+            places.addAll(resolveExtraPlaces(result, basket));
+        }
+
+        // 화이트리스트 필터와 이유 문구 정제를 먼저 통과시킨 뒤 스케줄링한다.
         // 스케줄러가 AI 원문을 그대로 받으면 걸러졌어야 할 장소에 시각까지 배정된다.
-        AiItineraryResult cleaned = sanitizeReasons(filterToBasketContents(result, basket));
+        AiItineraryResult cleaned = sanitizeReasons(filterToKnownContents(result, places));
         return ItineraryGenerateResponse.from(basket, toPlanned(cleaned, places, basket.getTravelDate()));
     }
 
@@ -171,14 +203,15 @@ public class ItineraryService {
     // --- 내부 헬퍼 ---
 
     /**
-     * AI 응답에서 바구니에 담기지 않은 contentId 항목을 제거한다.
-     * 시스템 프롬프트로 "입력 contentId 만 사용" 을 지시하지만 강제가 아니므로,
-     * 모델이 임의의 장소를 섞어 넣더라도 사용자가 담지 않은 장소가 일정에 노출되지 않도록 서버에서 방어한다.
+     * AI 응답에서 화이트리스트({@code allowed})에 없는 contentId 항목을 제거한다.
+     * 시스템 프롬프트로 사용할 contentId 범위를 지시하지만 강제가 아니므로,
+     * 모델이 지어낸 장소가 일정에 노출되지 않도록 서버에서 방어한다.
+     * 화이트리스트는 STRICT 면 바구니, AUGMENT 면 바구니에 지역 내 유효 콘텐츠를 더한 집합이다.
      * 일차 구성·순서·제목은 그대로 두고 미상 항목만 걷어낸다 (빈 일차도 유지).
      */
-    private AiItineraryResult filterToBasketContents(AiItineraryResult result, Basket basket) {
-        Set<String> knownContentIds = basket.getItems().stream()
-                .map(BasketItem::getContentId)
+    private AiItineraryResult filterToKnownContents(AiItineraryResult result, Collection<AiPlace> allowed) {
+        Set<String> knownContentIds = allowed.stream()
+                .map(AiPlace::contentId)
                 .collect(Collectors.toSet());
 
         List<String> removedContentIds = new ArrayList<>();
@@ -196,7 +229,7 @@ public class ItineraryService {
         }
 
         if (!removedContentIds.isEmpty()) {
-            log.warn("AI 일정 응답에서 바구니에 없는 장소 {}건을 제외했습니다. contentIds={}",
+            log.warn("AI 일정 응답에서 허용되지 않은 장소 {}건을 제외했습니다. contentIds={}",
                     removedContentIds.size(), removedContentIds);
         }
         return new AiItineraryResult(result.title(), filteredDays);
@@ -406,6 +439,88 @@ public class ItineraryService {
                 detail.restDate(),
                 detail.stayDuration(),
                 item.getPriority().getLabel()
+        );
+    }
+
+    /**
+     * AUGMENT 모드에서 AI 에게 제시할 같은 지역의 추가 후보를 조회한다.
+     * 프롬프트에는 id·이름·분류만 있으면 되므로 상세는 조회하지 않고 repository 한 번으로 끝낸다.
+     * 조회가 실패하거나 후보가 없으면 후보 없이 진행한다 (그 경우 AUGMENT 는 STRICT 로 수렴한다).
+     */
+    private List<AiPlace> findExtraCandidates(Basket basket) {
+        if (basket.getRegion() == null) {
+            return List.of();
+        }
+        try {
+            return travelContentRepository.findRegionCandidates(
+                            basket.getRegion(),
+                            DataStatus.ACTIVE,
+                            basketContentIds(basket),
+                            PageRequest.of(0, MAX_EXTRA_CANDIDATES))
+                    .stream()
+                    .map(candidate -> new AiPlace(
+                            candidate.contentId(), candidate.title(), candidate.contentTypeId(),
+                            null, null, null, null, null, null))
+                    .toList();
+        } catch (Exception e) {
+            log.warn("AUGMENT 추가 후보 조회에 실패해 후보 없이 진행합니다.", e);
+            return List.of();
+        }
+    }
+
+    private Set<String> basketContentIds(Basket basket) {
+        return basket.getItems().stream()
+                .map(BasketItem::getContentId)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * AUGMENT 모드에서 AI 가 제안한 바구니 밖 contentId 중, 같은 지역에 ACTIVE 로 적재된 것만 추가 장소로 인정한다.
+     * AI 가 지어낸 id 는 DB 에 없으므로 여기서 걸러진다. 상세 조회 실패는 일정 생성을 막지 않고
+     * 해당 장소만 제외한다(best-effort).
+     *
+     * <p>지역 콘텐츠 전체를 후보로 올리지 않고, AI 응답에 실제로 등장한 id 만 조회해 확인한다.
+     */
+    private List<AiPlace> resolveExtraPlaces(AiItineraryResult result, Basket basket) {
+        Set<String> basketContentIds = basketContentIds(basket);
+        // 같은 장소를 여러 번 제안해도 한 번만 조회하도록 중복을 없애고, 로그 순서를 위해 삽입 순서를 유지한다.
+        Set<String> candidates = aiDays(result).stream()
+                .flatMap(day -> aiItems(day).stream())
+                .map(AiItineraryResult.AiItem::contentId)
+                .filter(contentId -> contentId != null && !basketContentIds.contains(contentId))
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        if (candidates.isEmpty() || basket.getRegion() == null) {
+            return List.of();
+        }
+
+        // 프롬프트로 후보를 제시했더라도 모델이 목록 밖 id 를 섞을 수 있으므로 여기서 다시 검증한다.
+        List<String> allowedIds = travelContentRepository.findIdsByRegion(
+                candidates, basket.getRegion(), DataStatus.ACTIVE);
+
+        List<AiPlace> extras = new ArrayList<>();
+        for (String contentId : allowedIds) {
+            ContentDetailResponse detail = tryFetchDetail(contentId);
+            if (detail != null) {
+                extras.add(toAiPlace(detail));
+            }
+        }
+        log.info("AUGMENT 모드에서 AI 추가 제안 {}건 중 {}건을 지역 내 콘텐츠로 채택했습니다.",
+                candidates.size(), extras.size());
+        return extras;
+    }
+
+    /** AI 가 추가 제안한 장소. 바구니 스냅샷이 없으므로 우선순위 라벨도 없다. */
+    private AiPlace toAiPlace(ContentDetailResponse detail) {
+        return new AiPlace(
+                detail.contentId(),
+                detail.title(),
+                String.valueOf(detail.contentTypeId()),
+                detail.latitude(),
+                detail.longitude(),
+                detail.useTime(),
+                detail.restDate(),
+                detail.stayDuration(),
+                null
         );
     }
 

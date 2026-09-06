@@ -86,6 +86,20 @@
 | POST  | `/api/v1/itineraries/{id}/regenerate`     | O        | 전체 또는 하루 일정 재생성|
 | DELETE| `/api/v1/itineraries/{id}`                | O        | 저장된 일정 삭제          |
 
+`POST /api/v1/itineraries/generate` 는 선택 요청 바디를 받는다. 바디를 보내지 않으면 기존과 동일하게 동작한다.
+
+```json
+{
+  "mode": "STRICT"
+}
+```
+
+| 필드   | 타입   | 기본값     | 설명                                                          |
+| ------ | ------ | ---------- | ------------------------------------------------------------- |
+| `mode` | enum   | `STRICT`   | `STRICT` = 바구니에 담은 장소만으로 구성. `AUGMENT` = AI 가 같은 지역의 적재 콘텐츠를 추가 제안할 수 있음 |
+
+`AUGMENT` 에서는 같은 지역의 유효 콘텐츠 후보를 AI 프롬프트에 함께 실어 보내고, 응답으로 돌아온 장소 중 DB 에 없거나 다른 지역인 것은 서버가 제거한다. 추가된 장소는 응답 항목의 `addedByAi` 가 `true` 이며, 사용자가 저장 전에 제거할 수 있다.
+
 목록 조회는 요약 정보(`itineraryId`, `title`, `region`, `travelDate`, `duration`, `lastModifiedAt`)만 반환하며 일차·항목은 포함하지 않는다. 상세는 `GET /api/v1/itineraries/{id}` 를 사용한다. 일정 삭제 시 해당 일정의 활성 공유 토큰도 함께 비활성화된다.
 
 ## 일정 공유

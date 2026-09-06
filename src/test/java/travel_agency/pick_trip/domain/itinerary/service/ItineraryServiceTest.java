@@ -3,8 +3,10 @@ package travel_agency.pick_trip.domain.itinerary.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
@@ -12,6 +14,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -29,6 +32,7 @@ import org.mockito.InjectMocks;
 import org.mockito.MockedStatic;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
 import travel_agency.pick_trip.domain.basket.entity.BasketItem;
 import travel_agency.pick_trip.domain.basket.entity.Priority;
@@ -36,7 +40,12 @@ import travel_agency.pick_trip.domain.basket.entity.TravelCondition;
 import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
 import travel_agency.pick_trip.domain.content.entity.ContentCategory;
+import travel_agency.pick_trip.domain.content.entity.DataStatus;
+import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
+import travel_agency.pick_trip.domain.content.repository.projection.RegionContentProjection;
 import travel_agency.pick_trip.domain.content.service.ContentService;
+import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
+import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryGenerateResponse;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryResponse;
@@ -57,6 +66,7 @@ import travel_agency.pick_trip.infra.ai.dto.AiItineraryRequest;
 import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult;
 import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult.AiDay;
 import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult.AiItem;
+import travel_agency.pick_trip.infra.ai.dto.AiPlace;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("ItineraryService")
@@ -64,6 +74,7 @@ class ItineraryServiceTest {
 
     @Mock private BasketRepository basketRepository;
     @Mock private ContentService contentService;
+    @Mock private TravelContentRepository travelContentRepository;
     @Mock private AiItineraryClient aiItineraryClient;
     @Mock private ItineraryRepository itineraryRepository;
     @Mock private ShareTokenRepository shareTokenRepository;
@@ -411,6 +422,293 @@ class ItineraryServiceTest {
                     .isInstanceOf(PickTripException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.ITINERARY_PROVIDER_FAILED);
+        }
+    }
+
+    @Nested
+    @DisplayName("generate - 생성 모드")
+    class Modes {
+
+        private void givenBasketAndDetails(Basket basket) {
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> detail(invocation.getArgument(0)));
+        }
+
+        private AiItineraryResult resultWithExtra(String extraContentId, String extraReason) {
+            return new AiItineraryResult(
+                    "하동 1박 2일 가족 여행",
+                    List.of(new AiDay(1, List.of(
+                            new AiItem("c1", 1, "바구니에 있는 장소입니다."),
+                            new AiItem(extraContentId, 2, extraReason),
+                            new AiItem("c2", 3, "바구니에 있는 장소입니다.")
+                    )))
+            );
+        }
+
+        @Test
+        @DisplayName("모드를 지정하지 않으면 STRICT 로 동작해 바구니 밖 장소를 모두 제거한다")
+        void defaultRequest_behavesAsStrict() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(resultWithExtra("x9", "지역 콘텐츠입니다."));
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, GenerateItineraryRequest.defaults());
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2");
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::addedByAi)
+                    .containsOnly(false);
+            verify(travelContentRepository, never()).findIdsByRegion(any(), any(), any());
+            verify(travelContentRepository, never()).findRegionCandidates(any(), any(), any(), any());
+
+            ArgumentCaptor<AiItineraryRequest> captor = ArgumentCaptor.forClass(AiItineraryRequest.class);
+            verify(aiItineraryClient).generate(captor.capture());
+            assertThat(captor.getValue().extraCandidates()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("AUGMENT 면 같은 지역에 적재된 추가 장소를 유지하고 addedByAi 를 true 로 표시한다")
+        void augment_keepsRegionContentAndFlagsIt() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            // 후보로 제시한 장소를 AI 가 실제로 골라 오는 AUGMENT 정상 흐름
+            given(travelContentRepository.findRegionCandidates(
+                    eq(Region.HADONG), eq(DataStatus.ACTIVE), any(), any()))
+                    .willReturn(List.of(new RegionContentProjection("x9", "최참판댁", "12")));
+            given(aiItineraryClient.generate(any())).willReturn(resultWithExtra("x9", "빈 시간을 채우려고 넣었습니다."));
+            given(travelContentRepository.findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE)))
+                    .willReturn(List.of("x9"));
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            List<ItineraryGenerateResponse.Item> items = response.days().get(0).items();
+            assertThat(items)
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "x9", "c2");
+            assertThat(items)
+                    .filteredOn(item -> item.contentId().equals("x9"))
+                    .singleElement()
+                    .satisfies(item -> {
+                        assertThat(item.addedByAi()).isTrue();
+                        // 바구니 스냅샷에 없으므로 표시명은 스케줄러가 들고 있던 콘텐츠 상세 값으로 폴백한다.
+                        assertThat(item.title()).isEqualTo("title-x9");
+                    });
+            assertThat(items)
+                    .filteredOn(item -> !item.contentId().equals("x9"))
+                    .extracting(ItineraryGenerateResponse.Item::addedByAi)
+                    .containsOnly(false);
+
+            ArgumentCaptor<AiItineraryRequest> captor = ArgumentCaptor.forClass(AiItineraryRequest.class);
+            verify(aiItineraryClient).generate(captor.capture());
+            assertThat(captor.getValue().extraCandidates())
+                    .extracting(AiPlace::contentId)
+                    .containsExactly("x9");
+        }
+
+        @Test
+        @DisplayName("AUGMENT 면 같은 지역 후보를 AI 프롬프트 입력으로 실어 보낸다 (바구니 항목은 제외)")
+        void augment_sendsRegionCandidatesToAi() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+            given(travelContentRepository.findRegionCandidates(
+                    eq(Region.HADONG), eq(DataStatus.ACTIVE), any(), any()))
+                    .willReturn(List.of(
+                            new RegionContentProjection("x9", "최참판댁", "12"),
+                            new RegionContentProjection("x10", "화개장터", "14")));
+
+            // when
+            itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            ArgumentCaptor<AiItineraryRequest> captor = ArgumentCaptor.forClass(AiItineraryRequest.class);
+            verify(aiItineraryClient).generate(captor.capture());
+            assertThat(captor.getValue().extraCandidates())
+                    .extracting(AiPlace::contentId, AiPlace::title, AiPlace::category)
+                    .containsExactly(tuple("x9", "최참판댁", "12"), tuple("x10", "화개장터", "14"));
+            // 후보에 상세는 채우지 않는다 (추가 API 호출 없이 repository 한 번으로 끝낸다).
+            assertThat(captor.getValue().extraCandidates())
+                    .allSatisfy(candidate -> assertThat(candidate.latitude()).isNull());
+
+            ArgumentCaptor<Collection<String>> excludedCaptor = ArgumentCaptor.forClass(Collection.class);
+            ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+            verify(travelContentRepository).findRegionCandidates(
+                    eq(Region.HADONG), eq(DataStatus.ACTIVE), excludedCaptor.capture(), pageableCaptor.capture());
+            assertThat(excludedCaptor.getValue()).containsExactlyInAnyOrder("c1", "c2");
+            // 프롬프트 토큰 비용 때문에 후보 수는 상한으로 잘라 조회한다.
+            assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(80);
+        }
+
+        @Test
+        @DisplayName("AUGMENT 인데 지역 후보가 없으면 후보 없이 정상 생성한다")
+        void augment_withoutCandidates_stillGenerates() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+            given(travelContentRepository.findRegionCandidates(any(), any(), any(), any()))
+                    .willReturn(List.of());
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2");
+        }
+
+        @Test
+        @DisplayName("AUGMENT 후보 조회가 실패해도 예외 없이 후보 없이 생성한다")
+        void augment_candidateQueryFails_generatesWithoutCandidates() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+            given(travelContentRepository.findRegionCandidates(any(), any(), any(), any()))
+                    .willThrow(new RuntimeException("DB 장애"));
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2");
+
+            ArgumentCaptor<AiItineraryRequest> captor = ArgumentCaptor.forClass(AiItineraryRequest.class);
+            verify(aiItineraryClient).generate(captor.capture());
+            assertThat(captor.getValue().extraCandidates()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("AUGMENT 로 추가된 장소도 스케줄링으로 방문 시각을 배정받는다")
+        void augment_extraPlaceGetsVisitTimes() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(resultWithExtra("x9", "빈 시간을 채우려고 넣었습니다."));
+            given(travelContentRepository.findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE)))
+                    .willReturn(List.of("x9"));
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            assertThat(response.days().get(0).items()).allSatisfy(item -> {
+                assertThat(item.startTime()).isNotNull();
+                assertThat(item.endTime()).isNotNull();
+            });
+        }
+
+        @Test
+        @DisplayName("AUGMENT 로 추가된 장소의 배치 이유도 내부 값 정제를 거친다")
+        void augment_extraPlaceReasonIsSanitized() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(
+                    resultWithExtra("x9", "슬로시티(773075)와 가깝고 LESS_WALKING 조건이라 추가했습니다."));
+            given(travelContentRepository.findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE)))
+                    .willReturn(List.of("x9"));
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            String extraReason = response.days().get(0).items().stream()
+                    .filter(item -> item.contentId().equals("x9"))
+                    .findFirst()
+                    .orElseThrow()
+                    .reason();
+            assertThat(extraReason)
+                    .doesNotContain("773075")
+                    .doesNotContain("LESS_WALKING")
+                    .contains("슬로시티")
+                    .contains("걷기 적게");
+        }
+
+        @Test
+        @DisplayName("AUGMENT 여도 DB 에 없는 contentId 는 제거한다")
+        void augment_removesUnknownContentId() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(resultWithExtra("ghost-99", "AI가 지어낸 장소입니다."));
+            given(travelContentRepository.findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE)))
+                    .willReturn(List.of());
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2");
+        }
+
+        @Test
+        @DisplayName("AUGMENT 여도 다른 지역 콘텐츠는 제거한다 (조회를 바구니 지역으로 한정한다)")
+        void augment_removesOtherRegionContent() {
+            // given: 영주 콘텐츠라 하동 지역 조회 결과에 포함되지 않는다
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            givenBasketAndDetails(basket);
+            given(aiItineraryClient.generate(any())).willReturn(resultWithExtra("yeongju-1", "영주 콘텐츠입니다."));
+            given(travelContentRepository.findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE)))
+                    .willReturn(List.of());
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2");
+            verify(travelContentRepository).findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE));
+        }
+
+        @Test
+        @DisplayName("AUGMENT 에서 추가 장소의 상세 조회가 실패하면 그 장소만 제외하고 일정은 생성한다")
+        void augment_detailFailure_dropsOnlyThatPlace() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString())).willAnswer(invocation -> {
+                if ("x9".equals(invocation.getArgument(0))) {
+                    throw new RuntimeException("TourAPI 장애");
+                }
+                return detail(invocation.getArgument(0));
+            });
+            given(aiItineraryClient.generate(any())).willReturn(resultWithExtra("x9", "빈 시간을 채우려고 넣었습니다."));
+            given(travelContentRepository.findIdsByRegion(any(), eq(Region.HADONG), eq(DataStatus.ACTIVE)))
+                    .willReturn(List.of("x9"));
+
+            // when
+            ItineraryGenerateResponse response =
+                    itineraryService.generate(USER_ID, new GenerateItineraryRequest(GenerateMode.AUGMENT));
+
+            // then
+            assertThat(response.days().get(0).items())
+                    .extracting(ItineraryGenerateResponse.Item::contentId)
+                    .containsExactly("c1", "c2");
         }
     }
 
