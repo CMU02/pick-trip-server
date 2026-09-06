@@ -127,7 +127,16 @@
   "adjustments": [],     // = variants[0].adjustments
   "suggestions": [],     // 최상위 유지
   "variants": [
-    { "label": "자동차 힐링 루트", "travelMode": "CAR", "title": "...", "days": [], "adjustments": [] }
+    {
+      "label": "자동차 힐링 루트", "travelMode": "CAR", "title": "...", "days": [], "adjustments": [],
+      "metrics": {
+        "totalTravelMinutes": 50,
+        "totalWalkingMinutes": 0,
+        "totalTransitCost": 3158,
+        "placeCount": 3,
+        "unavailableReasons": {}
+      }
+    }
   ]
 }
 ```
@@ -136,7 +145,63 @@
 `variants` 를 모르는 기존 클라이언트는 지금까지처럼 최상위 필드만 읽으면 되고, 이동수단을 지정하지 않으면
 `variants` 는 자동차 안 하나뿐이라 기존 응답과 내용이 같다.
 
-각 `variants` 항목의 필드는 `label`(사용자 노출용 일정안 이름), `travelMode`, `title`, `days`, `adjustments` 다.
+각 `variants` 항목의 필드는 `label`(사용자 노출용 일정안 이름), `travelMode`, `title`, `days`, `adjustments`,
+`metrics`(안끼리 비교하는 지표) 다.
+
+### `variants[].metrics` — 일정안 비교 지표
+
+스플릿 뷰에서 안을 나란히 놓고 비교하기 위한 값이다. 별도 비교 엔드포인트는 없고 생성 응답에 그대로 포함한다.
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `totalTravelMinutes` | number\|null | 전 일차 이동 시간(분) 합. 일차별 `days[].totalTravelMinutes` 의 합과 같다 |
+| `totalWalkingMinutes` | number\|null | 도보로 분류된 구간의 시간(분) 합. `CAR` 은 주차 후 도보를 모델에 두지 않아 항상 0 이다 |
+| `totalTransitCost` | number\|null | 총 예상 교통비(원). 상수 기반 개략 추정이다 |
+| `placeCount` | number\|null | 전 일차 방문 장소 수 |
+| `unavailableReasons` | object | 산출하지 못한 지표의 사유 코드(`지표명` → 코드). 전부 산출되면 `{}` |
+
+**모든 안이 같은 키 집합을 반환한다.** 산출할 수 없는 지표도 키를 빼지 않고 값을 `null` 로 내리며,
+그 이유를 `unavailableReasons` 에 담는다. 스플릿 뷰가 열을 맞춰 그릴 수 있게 하기 위함이다.
+
+```jsonc
+"metrics": {
+  "totalTravelMinutes": 40,
+  "totalWalkingMinutes": 0,
+  "totalTransitCost": null,
+  "placeCount": 3,
+  "unavailableReasons": { "totalTransitCost": "UNKNOWN_TRAVEL_DISTANCE" }
+}
+```
+
+사유 코드는 다음과 같다.
+
+| 코드 | 의미 |
+|------|------|
+| `UNKNOWN_TRAVEL_DISTANCE` | 구간 좌표(또는 도로 거리)가 하나도 없어 이동 거리를 잴 근거가 없다 |
+
+"해당 없음"은 산출 불가가 아니다. 예를 들어 `CAR` 의 `totalWalkingMinutes` 는 언제나 `0` 이며 사유 코드를 남기지 않는다.
+방문 장소가 0~1곳이라 이동 구간 자체가 없으면 교통비는 `null` 이 아니라 `0` 원이다.
+
+### 교통비 계산 정책
+
+교통비는 실시간 요금 조회가 아니라 상수 기반 개략 추정이다. 단가는 `application.yaml` 의 `itinerary.cost` 설정값이며,
+유가·요금이 개정되면 코드가 아니라 설정만 바꾼다.
+
+| 설정 | 기본값 | 근거 |
+|------|--------|------|
+| `itinerary.cost.car-cost-per-km-won` | 142 | 휘발유 1,700원/L ÷ 연비 12km/L ≒ 142원/km |
+| `itinerary.cost.transit-base-fare-won` | 1500 | 경남·경북 시내버스 성인 현금 기본요금(2025년 기준) |
+
+- `CAR` — `총 이동 km × car-cost-per-km-won`. 총 이동 km 는 일차별 `totalTravelKm` 의 합이다.
+  **통행료는 0 으로 근사한다.** 하동·영주·예천은 고속도로보다 국도 비중이 높아 유료 구간을 지나는 경우가 드물다.
+  주차비도 장소별 요금 데이터가 없어 포함하지 않는다.
+- `TRANSIT` — `transit-base-fare-won × 승차 횟수`. 승차 횟수는 실제 이동 거리(직선거리 × 우회 계수 1.3)가
+  `WALK_MAX_KM`(2.0km)을 넘는 구간 수다. 그 이하 구간은 도보로 보고 요금을 매기지 않으며, 도보 판정 경계는
+  이동시간 환산과 같은 상수를 쓴다.
+  **국내에 지역 시내버스 요금 공개 API 가 없어 환승 할인·거리 비례(시계외) 요금을 반영하지 못한다.**
+  대중교통 길찾기 API(ODsay 등)를 붙이면 실측 요금으로 교체한다.
+- 좌표가 없어 구간 거리를 하나도 재지 못하면 교통비는 `null` + `UNKNOWN_TRAVEL_DISTANCE` 다.
+  일부 구간만 거리를 모르면 잰 구간만으로 근사한다(과소 추정).
 
 이동시간 모델은 이동수단마다 다르다.
 
