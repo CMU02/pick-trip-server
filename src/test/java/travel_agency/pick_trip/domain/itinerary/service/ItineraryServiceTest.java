@@ -18,7 +18,9 @@ import java.util.Collection;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -43,6 +45,8 @@ import travel_agency.pick_trip.domain.content.entity.ContentCategory;
 import travel_agency.pick_trip.domain.content.entity.DataStatus;
 import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
 import travel_agency.pick_trip.domain.content.repository.projection.RegionContentProjection;
+import travel_agency.pick_trip.domain.content.entity.CongestionLevel;
+import travel_agency.pick_trip.domain.content.service.CongestionService;
 import travel_agency.pick_trip.domain.content.service.ContentService;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
@@ -78,6 +82,7 @@ class ItineraryServiceTest {
     @Mock private AiItineraryClient aiItineraryClient;
     @Mock private ItineraryRepository itineraryRepository;
     @Mock private ShareTokenRepository shareTokenRepository;
+    @Mock private CongestionService congestionService;
     @InjectMocks private ItineraryService itineraryService;
 
     private static final UUID USER_ID = UUID.randomUUID();
@@ -104,7 +109,7 @@ class ItineraryServiceTest {
                 contentId, "title-" + contentId, 12, "주소", "010", "home",
                 35.0, 127.0, "요약", "09:00-18:00", "월요일", "가능", "무료",
                 "없음", "불가", "2시간", Boolean.FALSE, "TourAPI", List.of(),
-                ContentCategory.ATTRACTION, false, "HADONG"
+                ContentCategory.ATTRACTION, false, "HADONG", null
         );
     }
 
@@ -930,6 +935,91 @@ class ItineraryServiceTest {
 
             assertThatCode(action).doesNotThrowAnyException();
             verify(itineraryRepository).delete(itinerary);
+        }
+    }
+
+    @Nested
+    @DisplayName("generate - 혼잡 기반 순서변경 제안")
+    class CongestionSuggestions {
+
+        /** 스케줄러가 배정한 시각과 무관하게 검증하려고 모든 시간대에 같은 레벨을 채운다. */
+        private Map<String, Map<Integer, CongestionLevel>> allHours(Map<String, CongestionLevel> byContentId) {
+            Map<String, Map<Integer, CongestionLevel>> levels = new HashMap<>();
+            byContentId.forEach((contentId, level) -> {
+                Map<Integer, CongestionLevel> byHour = new HashMap<>();
+                for (int hour = 0; hour < 24; hour++) {
+                    byHour.put(hour, level);
+                }
+                levels.put(contentId, byHour);
+            });
+            return levels;
+        }
+
+        private void givenTwoPlaceItinerary() {
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> detail(invocation.getArgument(0)));
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+        }
+
+        @Test
+        @DisplayName("붐비는 장소 뒤에 덜 붐비는 장소가 있으면 순서를 바꾸자고 제안한다")
+        void 트리거충족_제안생성() {
+            givenTwoPlaceItinerary();
+            given(congestionService.findLevels(any())).willReturn(allHours(Map.of(
+                    "c1", CongestionLevel.HIGH,
+                    "c2", CongestionLevel.LOW)));
+
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            assertThat(response.suggestions()).hasSize(1);
+            ItineraryGenerateResponse.Suggestion suggestion = response.suggestions().get(0);
+            assertThat(suggestion.type()).isEqualTo("CONGESTION_REORDER");
+            assertThat(suggestion.dayIndex()).isEqualTo(1);
+            assertThat(suggestion.contentId()).isEqualTo("c1");
+            assertThat(suggestion.swapWithContentId()).isEqualTo("c2");
+            assertThat(suggestion.message()).contains("title-c1", "title-c2", "붐빕니다");
+            // 제안만 하고 실제 순서는 그대로 둔다 (수락은 PATCH /{id} 로 처리한다).
+            assertThat(response.days().get(0).items().get(0).contentId()).isEqualTo("c1");
+        }
+
+        @Test
+        @DisplayName("붐비는 장소가 없으면 제안하지 않는다")
+        void 트리거미충족_제안없음() {
+            givenTwoPlaceItinerary();
+            given(congestionService.findLevels(any())).willReturn(allHours(Map.of(
+                    "c1", CongestionLevel.MEDIUM,
+                    "c2", CongestionLevel.LOW)));
+
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            assertThat(response.suggestions()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("뒤쪽 장소도 똑같이 붐비면 바꿀 이유가 없어 제안하지 않는다")
+        void 대체후보없음_제안없음() {
+            givenTwoPlaceItinerary();
+            given(congestionService.findLevels(any())).willReturn(allHours(Map.of(
+                    "c1", CongestionLevel.HIGH,
+                    "c2", CongestionLevel.HIGH)));
+
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            assertThat(response.suggestions()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("혼잡 조회가 실패해도 일정 생성은 성공하고 제안은 빈 리스트가 된다")
+        void 혼잡조회실패_생성성공() {
+            givenTwoPlaceItinerary();
+            given(congestionService.findLevels(any())).willThrow(new RuntimeException("congestion down"));
+
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            assertThat(response.days().get(0).items()).hasSize(2);
+            assertThat(response.suggestions()).isEmpty();
         }
     }
 }

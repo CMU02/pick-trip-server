@@ -26,11 +26,14 @@ import travel_agency.pick_trip.domain.basket.repository.BasketRepository;
 import travel_agency.pick_trip.domain.content.dto.response.ContentDetailResponse;
 import travel_agency.pick_trip.domain.content.entity.DataStatus;
 import travel_agency.pick_trip.domain.content.repository.TravelContentRepository;
+import travel_agency.pick_trip.domain.content.entity.CongestionLevel;
+import travel_agency.pick_trip.domain.content.service.CongestionService;
 import travel_agency.pick_trip.domain.content.service.ContentService;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.request.GenerateMode;
 import travel_agency.pick_trip.domain.itinerary.dto.request.SaveItineraryRequest;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryGenerateResponse;
+import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryGenerateResponse.Suggestion;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItineraryResponse;
 import travel_agency.pick_trip.domain.itinerary.dto.response.ItinerarySummaryResponse;
 import travel_agency.pick_trip.domain.itinerary.entity.Itinerary;
@@ -72,6 +75,8 @@ public class ItineraryService {
      * 추천 다양성이 문제로 드러나면 인기·카테고리 기준 샘플링으로 바꾼다.
      */
     private static final int MAX_EXTRA_CANDIDATES = 80;
+    /** 혼잡 기반 순서변경 제안의 {@code type} 값. */
+    private static final String SUGGESTION_CONGESTION_REORDER = "CONGESTION_REORDER";
 
     private final BasketRepository basketRepository;
     private final ContentService contentService;
@@ -79,6 +84,7 @@ public class ItineraryService {
     private final AiItineraryClient aiItineraryClient;
     private final ItineraryRepository itineraryRepository;
     private final ShareTokenRepository shareTokenRepository;
+    private final CongestionService congestionService;
 
     /** 바디 없이 호출한 기존 클라이언트를 위한 기본(STRICT) 생성. */
     @Transactional(readOnly = true)
@@ -124,7 +130,9 @@ public class ItineraryService {
         // 화이트리스트 필터와 이유 문구 정제를 먼저 통과시킨 뒤 스케줄링한다.
         // 스케줄러가 AI 원문을 그대로 받으면 걸러졌어야 할 장소에 시각까지 배정된다.
         AiItineraryResult cleaned = sanitizeReasons(filterToKnownContents(result, places));
-        return ItineraryGenerateResponse.from(basket, toPlanned(cleaned, places, basket.getTravelDate()));
+        ItineraryGenerateResponse response =
+                ItineraryGenerateResponse.from(basket, toPlanned(cleaned, places, basket.getTravelDate()));
+        return response.withSuggestions(buildCongestionSuggestions(response));
     }
 
     /**
@@ -198,6 +206,85 @@ public class ItineraryService {
         itinerary.updateTitle(generated.title());
         itinerary.replaceDays(toDaysFromGenerated(generated.days()));
         return ItineraryResponse.from(itinerary);
+    }
+
+    // --- 혼잡 기반 순서변경 제안 (#73) ---
+
+    /**
+     * 확정된 방문 시각 기준으로 붐비는 장소를 찾아 순서변경을 제안한다.
+     * <b>실제 재정렬은 하지 않는다.</b> 사용자가 제안을 수락하면 클라이언트가 순서를 바꾼 일정으로
+     * 기존 {@code PATCH /api/v1/itineraries/{id}} ({@link #modify}) 를 호출해 반영한다.
+     *
+     * <p>혼잡 조회가 실패해도 일정 생성 자체는 성공해야 하므로 예외를 삼키고 빈 리스트를 반환한다.
+     */
+    private List<Suggestion> buildCongestionSuggestions(ItineraryGenerateResponse response) {
+        List<String> contentIds = response.days().stream()
+                .flatMap(day -> day.items().stream())
+                .filter(item -> item.startTime() != null)
+                .map(ItineraryGenerateResponse.Item::contentId)
+                .distinct()
+                .toList();
+        if (contentIds.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, Map<Integer, CongestionLevel>> levels;
+        try {
+            levels = congestionService.findLevels(contentIds);
+        } catch (RuntimeException e) {
+            log.warn("혼잡 조회에 실패해 순서변경 제안 없이 일정을 반환합니다: {}", e.getMessage());
+            return List.of();
+        }
+        if (levels.isEmpty()) {
+            return List.of();
+        }
+
+        List<Suggestion> suggestions = new ArrayList<>();
+        for (ItineraryGenerateResponse.Day day : response.days()) {
+            suggestions.addAll(suggestionsForDay(day, levels));
+        }
+        return List.copyOf(suggestions);
+    }
+
+    /**
+     * 한 일차 안에서, 방문 시작 시각의 혼잡이 HIGH 인 장소마다 같은 시간대 혼잡이 더 낮은
+     * 뒤쪽 장소를 찾아 둘을 바꾸자고 제안한다. 뒤쪽에 더 나은 후보가 없으면 제안하지 않는다.
+     */
+    private List<Suggestion> suggestionsForDay(
+            ItineraryGenerateResponse.Day day, Map<String, Map<Integer, CongestionLevel>> levels) {
+        List<ItineraryGenerateResponse.Item> items = day.items();
+        List<Suggestion> suggestions = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            ItineraryGenerateResponse.Item crowded = items.get(i);
+            if (crowded.startTime() == null) {
+                continue;
+            }
+            int hourSlot = crowded.startTime().getHour();
+            if (levelOf(levels, crowded.contentId(), hourSlot) != CongestionLevel.HIGH) {
+                continue;
+            }
+            for (int j = i + 1; j < items.size(); j++) {
+                ItineraryGenerateResponse.Item candidate = items.get(j);
+                CongestionLevel candidateLevel = levelOf(levels, candidate.contentId(), hourSlot);
+                if (candidateLevel != null && candidateLevel != CongestionLevel.HIGH) {
+                    suggestions.add(new Suggestion(
+                            SUGGESTION_CONGESTION_REORDER,
+                            "%d시쯤 %s은(는) 너무 붐빕니다. %s을(를) 먼저 방문하도록 순서를 바꿀까요?"
+                                    .formatted(hourSlot, crowded.title(), candidate.title()),
+                            day.dayIndex(),
+                            crowded.contentId(),
+                            candidate.contentId()));
+                    break;
+                }
+            }
+        }
+        return suggestions;
+    }
+
+    /** 스냅샷이 없는 콘텐츠·시간대는 null(모름)로 다룬다. */
+    private CongestionLevel levelOf(
+            Map<String, Map<Integer, CongestionLevel>> levels, String contentId, int hourSlot) {
+        return levels.getOrDefault(contentId, Map.of()).get(hourSlot);
     }
 
     // --- 내부 헬퍼 ---
