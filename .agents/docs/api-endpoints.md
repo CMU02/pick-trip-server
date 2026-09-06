@@ -48,6 +48,17 @@
 | GET   | `/api/v1/contents/{id}`       | X        | 콘텐츠 상세 조회                           |
 | GET   | `/api/v1/contents/{id}/nearby` | X       | 해당 콘텐츠 좌표 기준 반경 내 주변 콘텐츠 조회 (거리순) |
 
+목록·상세 응답의 각 콘텐츠에는 관광객수 지표 `visitorStats` 가 붙는다 (없으면 `null`).
+
+- `totalVisitors` — 기간 누적 방문자수. 자체 프록시일 때는 그 콘텐츠가 바구니에 담긴 횟수.
+- `dailyAverageVisitors` — 일평균 방문자수. 자체 프록시일 때는 `null`.
+- `period` — 집계 기간 (예: `"2026-05~2026-06"`). 자체 프록시일 때는 `null`.
+- `source` — `"한국관광공사 지역별 방문자수"`(공공데이터포털 15101972) 또는 `"PickTrip 내부 지표"`.
+- `baseDate` — 기준일 (`yyyy-MM-dd`).
+- `approximate` — **항상 `true`**. 개별 장소 단위 관광객수를 주는 공개 데이터가 없어, 지역(시군구) 단위 통계를 그 지역 콘텐츠 값으로 그대로 내려주거나 자체 프록시로 대체하기 때문이다.
+
+폴백 순서는 `지역 통계 → 자체 프록시(바구니에 담긴 횟수) → null` 이다. 지표 조회가 실패해도 콘텐츠 응답 자체는 정상 반환하며 `visitorStats` 만 `null` 이 된다.
+
 `GET /api/v1/contents/{id}/nearby` 는 쿼리 파라미터 `radiusKm`(기본 5, 최대 20)과 `size`(기본 10, 최대 30)를 받는다.
 
 응답 각 항목의 거리·시간 필드:
@@ -99,6 +110,16 @@
 | `mode` | enum   | `STRICT`   | `STRICT` = 바구니에 담은 장소만으로 구성. `AUGMENT` = AI 가 같은 지역의 적재 콘텐츠를 추가 제안할 수 있음 |
 
 `AUGMENT` 에서는 같은 지역의 유효 콘텐츠 후보를 AI 프롬프트에 함께 실어 보내고, 응답으로 돌아온 장소 중 DB 에 없거나 다른 지역인 것은 서버가 제거한다. 추가된 장소는 응답 항목의 `addedByAi` 가 `true` 이며, 사용자가 저장 전에 제거할 수 있다.
+
+`POST /api/v1/itineraries/generate` 응답 최상위에는 혼잡 기반 순서변경 제안 `suggestions` 배열이 있다 (제안이 없으면 빈 배열).
+
+- `type` — 제안 종류. 현재는 `CONGESTION_REORDER` 뿐이다.
+- `message` — 사용자에게 보여줄 한국어 문장.
+- `dayIndex` — 제안이 적용되는 일차.
+- `contentId` — 붐비는 장소.
+- `swapWithContentId` — 대신 먼저 방문할 장소 (없으면 `null`).
+
+확정된 방문 시작 시각이 속한 시간대에 그 장소의 혼잡이 `HIGH` 이고, 같은 일차 뒤쪽에 같은 시간대 혼잡이 더 낮은 장소가 있을 때만 제안한다. **서버는 제안대로 재정렬하지 않는다.** 사용자가 수락하면 클라이언트가 순서를 바꾼 일정으로 `PATCH /api/v1/itineraries/{id}` 를 호출해 반영한다. 혼잡 조회가 실패해도 일정 생성은 정상 진행되며 `suggestions` 는 빈 배열이 된다.
 
 목록 조회는 요약 정보(`itineraryId`, `title`, `region`, `travelDate`, `duration`, `lastModifiedAt`)만 반환하며 일차·항목은 포함하지 않는다. 상세는 `GET /api/v1/itineraries/{id}` 를 사용한다. 일정 삭제 시 해당 일정의 활성 공유 토큰도 함께 비활성화된다.
 

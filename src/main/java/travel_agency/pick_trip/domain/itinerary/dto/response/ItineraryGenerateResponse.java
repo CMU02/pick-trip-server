@@ -22,8 +22,35 @@ public record ItineraryGenerateResponse(
         LocalDate travelDate,
         Integer duration,
         List<Day> days,
-        List<String> adjustments
+        List<String> adjustments,
+        List<Suggestion> suggestions
 ) {
+
+    /**
+     * 사용자에게 제안만 하는 항목. 서버는 이 제안대로 일정을 재정렬하지 않는다.
+     * 사용자가 수락하면 클라이언트가 순서를 바꾼 일정으로 기존 {@code PATCH /api/v1/itineraries/{id}}
+     * (수정) 를 호출해 반영한다.
+     *
+     * @param type               제안 종류. 현재는 {@code CONGESTION_REORDER} 뿐이다.
+     * @param message            사용자에게 보여줄 한국어 문장
+     * @param dayIndex           제안이 적용되는 일차
+     * @param contentId          붐비는 장소
+     * @param swapWithContentId  대신 먼저 방문할 장소 (없으면 null)
+     */
+    public record Suggestion(
+            String type,
+            String message,
+            int dayIndex,
+            String contentId,
+            String swapWithContentId
+    ) {
+    }
+
+    /** 혼잡 기반 제안을 덧붙인 사본. 혼잡 조회가 실패하면 빈 리스트 그대로 둔다. */
+    public ItineraryGenerateResponse withSuggestions(List<Suggestion> suggestions) {
+        return new ItineraryGenerateResponse(
+                title, region, travelDate, duration, days, adjustments, suggestions);
+    }
 
     public record Day(
             int dayIndex,
@@ -92,7 +119,8 @@ public record ItineraryGenerateResponse(
                 basket.getTravelDate(),
                 basket.getDuration(),
                 days,
-                planned.adjustments()
+                planned.adjustments(),
+                List.of()
         );
     }
 }

@@ -97,6 +97,12 @@ kakao-mobility:
   base-url: https://apis-navi.kakaomobility.com
   rest-api-key: ${KAKAO_CLIENT_ID}
 
+# 지역별 방문자수 (공공데이터포털 15101972, 한국관광 데이터랩). base-url 은 환경 무관 고정값이며
+# 인증키는 TourAPI 와 같은 PUBLIC_DATA_PORTAL_KEY(tour-api.service-key)를 재사용한다.
+# 아직 활용신청 전이라 호출이 실패할 수 있으며, 그때는 예외 없이 자체 프록시로 폴백한다.
+visitor-stats:
+  base-url: https://apis.data.go.kr/B551011/DataLabService
+
 # 회원 탈퇴 유예·하드 삭제. 탈퇴 후 retention-days 가 지난 계정을 cron 시각에 userPurgeJob 이 일괄 삭제한다.
 # 스케줄은 SchedulingConfig 가 켜진 prod 프로파일에서만 동작한다.
 user:
