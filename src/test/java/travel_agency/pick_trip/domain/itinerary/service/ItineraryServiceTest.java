@@ -1039,6 +1039,34 @@ class ItineraryServiceTest {
         }
 
         @Test
+        @DisplayName("자동 삽입된 휴식 스톱이 비교 지표의 장소 수·도보 시간에 반영된다")
+        void restStopIsCountedInMetrics() {
+            // given - 첫 호출은 후보 없음(휴식 미삽입) 기준선, 두 번째 호출에서 카페를 준다.
+            givenUphillWalkingCourse();
+            given(contentService.getNearbyContents(eq("c3"), anyDouble(), anyInt()))
+                    .willReturn(nearby(), nearby(cafe("cafe1", 127.011)));
+            VariantMetrics withoutRest = itineraryService
+                    .generate(USER_ID, transitRequest())
+                    .variants().get(0).metrics();
+
+            // when
+            VariantMetrics withRest = itineraryService
+                    .generate(USER_ID, transitRequest())
+                    .variants().get(0).metrics();
+
+            // then - 휴식 스톱을 되짚지 못하면 그 스톱을 낀 구간이 통째로 지표에서 빠진다.
+            assertThat(withRest.placeCount()).isEqualTo(withoutRest.placeCount() + 1);
+            // 전 구간이 도보 경계 안이라 도보 시간 합은 총 이동 시간과 같아야 한다.
+            // 휴식 스톱 구간이 빠지면 이 등식이 깨진다.
+            assertThat(withRest.totalWalkingMinutes()).isEqualTo(withRest.totalTravelMinutes());
+            // 스톱이 하나 늘어 구간이 쪼개지므로 도보 시간은 줄어들 수 없다.
+            assertThat(withRest.totalWalkingMinutes())
+                    .isGreaterThanOrEqualTo(withoutRest.totalWalkingMinutes());
+            assertThat(withRest.totalTransitCost()).isNotNull();
+            assertThat(withRest.unavailableReasons()).isEmpty();
+        }
+
+        @Test
         @DisplayName("휴식 스톱을 끼워 넣으면 뒤따르는 스톱의 방문 시각이 밀린다")
         void shiftsFollowingVisitTimes() {
             // given - 첫 호출은 후보 없음(휴식 미삽입) 기준선, 두 번째 호출에서 카페를 준다.
