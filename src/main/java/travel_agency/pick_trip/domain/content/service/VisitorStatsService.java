@@ -6,6 +6,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,9 +44,10 @@ public class VisitorStatsService {
     static final String SOURCE_PUBLIC_DATA = "한국관광공사 지역별 방문자수";
     static final String SOURCE_PROXY = "PickTrip 내부 지표";
 
-    // ponytail: 한 달치(최대 31일 × 관광객 구분 3종 ≒ 93행)를 1페이지로 받고 페이지네이션은 두지 않는다.
-    // 원천이 행 구분을 더 잘게 쪼개 500행을 넘기면 그때 totalCount 기준 페이지 순회를 넣는다.
-    private static final int COLLECT_PAGE_SIZE = 500;
+    /** 전국 응답 페이지 순회 단위. 테스트가 참조하므로 package-private. */
+    static final int PAGE_SIZE = 1000;
+    // ponytail: 한 달 전국 ≈ 23페이지(31일 × ~247 시군구 × 3 구분 / 1000). 원천이 행을 더 쪼개면 상향한다.
+    private static final int MAX_PAGES = 60;
     /** 관광객 구분 코드 1 = 현지인. 관광객수로 보기 어려워 합산에서 제외한다. */
     private static final String TOUR_DIV_LOCAL_RESIDENT = "1";
     private static final DateTimeFormatter YMD = DateTimeFormatter.ofPattern("yyyyMMdd");
@@ -56,58 +58,80 @@ public class VisitorStatsService {
     private final BasketRepository basketRepository;
 
     /**
-     * 지역의 한 달치 방문자수를 수집해 (지역, 연월) 단위로 upsert 한다. 반환값은 저장한 방문자수.
-     *
-     * <p>인증키 미승인·한도 초과·장애 어느 경우든 예외를 던지지 않고 0 을 반환한다. 관광객수 노출은
-     * 보조 기능이라 수집 실패가 다른 배치 단계나 콘텐츠 조회를 막아서는 안 된다.
+     * 한 달치 전국 방문자수를 페이지 순회로 받아 우리 지역(signguCode 일치)만 골라 (지역, 연월) 로 upsert 한다.
+     * 반환값은 지역별 저장한 방문자수(저장하지 않은 지역은 키 없음).
+     * 어떤 실패(예외·오류 코드·페이지 중간 실패)든 예외를 던지지 않고 아무것도 저장하지 않은 채 빈 맵을 반환한다.
+     * 부분 페이지만 합산하면 과소 집계가 저장되므로 중간 실패 시 통째로 버린다.
      */
     @Transactional
-    public long collectRegion(Region region, YearMonth month) {
-        RegionVisitorResponse response;
-        try {
-            response = visitorStatsClient.getLocalRegionVisitors(
-                    month.atDay(1).format(YMD),
-                    month.atEndOfMonth().format(YMD),
-                    region.getLDongRegnCd(),
-                    region.getLDongRegnCd() + region.getLDongSignguCd(),
-                    1,
-                    COLLECT_PAGE_SIZE
-            );
-        } catch (RuntimeException e) {
-            log.warn("[방문자수] {} {} 조회 실패 - 건너뜀: {}", region, month, e.getMessage());
-            return 0L;
-        }
-        if (response == null || response.isError()) {
-            log.warn("[방문자수] {} {} 오류 응답 code={} msg={} - 건너뜀", region, month,
-                    response == null ? null : response.resultCode(),
-                    response == null ? null : response.resultMsg());
-            return 0L;
+    public Map<Region, Long> collectMonth(YearMonth month) {
+        Map<String, Region> regionBySignguCode = new HashMap<>();
+        for (Region region : Region.values()) {
+            regionBySignguCode.put(region.getLDongRegnCd() + region.getLDongSignguCd(), region);
         }
 
-        long visitorCount = response.items().stream()
-                .filter(item -> !TOUR_DIV_LOCAL_RESIDENT.equals(item.touDivCd()))
-                .filter(item -> item.touNum() != null)
-                .mapToLong(item -> Math.round(item.touNum()))
-                .sum();
-        if (visitorCount <= 0) {
-            log.warn("[방문자수] {} {} 집계값이 없어 저장하지 않습니다.", region, month);
-            return 0L;
+        String startYmd = month.atDay(1).format(YMD);
+        String endYmd = month.atEndOfMonth().format(YMD);
+        Map<Region, Long> totals = new EnumMap<>(Region.class);
+        int page = 1;
+        while (true) {
+            RegionVisitorResponse response;
+            try {
+                response = visitorStatsClient.getLocalRegionVisitors(startYmd, endYmd, page, PAGE_SIZE);
+            } catch (RuntimeException e) {
+                log.warn("[방문자수] {} {}페이지 조회 실패 - 건너뜀: {}", month, page, e.getMessage());
+                return Map.of();
+            }
+            if (response == null || response.isError()) {
+                log.warn("[방문자수] {} {}페이지 오류 응답 code={} msg={} - 건너뜀", month, page,
+                        response == null ? null : response.resultCode(),
+                        response == null ? null : response.resultMsg());
+                return Map.of();
+            }
+
+            for (RegionVisitorResponse.Item item : response.items()) {
+                Region region = regionBySignguCode.get(item.signguCode());
+                if (region == null
+                        || TOUR_DIV_LOCAL_RESIDENT.equals(item.touDivCd())
+                        || item.touNum() == null) {
+                    continue;
+                }
+                totals.merge(region, Math.round(item.touNum()), Long::sum);
+            }
+
+            if (response.items().isEmpty() || (long) page * PAGE_SIZE >= response.totalCount()) {
+                break;
+            }
+            page++;
+            if (page > MAX_PAGES) {
+                log.warn("[방문자수] {} 페이지가 {}를 넘어 중단 - 건너뜀", month, MAX_PAGES);
+                return Map.of();
+            }
         }
 
         String statMonth = month.format(STAT_MONTH);
         LocalDateTime now = LocalDateTime.now();
-        regionVisitorStatsRepository.findByRegionAndStatMonth(region, statMonth)
-                .ifPresentOrElse(
-                        stats -> stats.updateCount(visitorCount, now),
-                        () -> regionVisitorStatsRepository.save(RegionVisitorStats.builder()
-                                .region(region)
-                                .statMonth(statMonth)
-                                .visitorCount(visitorCount)
-                                .source(SOURCE_PUBLIC_DATA)
-                                .collectedAt(now)
-                                .build()));
-        log.info("[방문자수] {} {} {}명 반영", region, statMonth, visitorCount);
-        return visitorCount;
+        Map<Region, Long> saved = new EnumMap<>(Region.class);
+        for (Map.Entry<Region, Long> entry : totals.entrySet()) {
+            Region region = entry.getKey();
+            long visitorCount = entry.getValue();
+            if (visitorCount <= 0) {
+                continue;
+            }
+            regionVisitorStatsRepository.findByRegionAndStatMonth(region, statMonth)
+                    .ifPresentOrElse(
+                            stats -> stats.updateCount(visitorCount, now),
+                            () -> regionVisitorStatsRepository.save(RegionVisitorStats.builder()
+                                    .region(region)
+                                    .statMonth(statMonth)
+                                    .visitorCount(visitorCount)
+                                    .source(SOURCE_PUBLIC_DATA)
+                                    .collectedAt(now)
+                                    .build()));
+            log.info("[방문자수] {} {} {}명 반영", region, statMonth, visitorCount);
+            saved.put(region, visitorCount);
+        }
+        return saved;
     }
 
     /**

@@ -1,11 +1,13 @@
 package travel_agency.pick_trip.domain.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.groups.Tuple.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import feign.FeignException;
@@ -44,23 +46,24 @@ class VisitorStatsServiceTest {
 
     private static final Region REGION = Region.YEONGJU; // 법정동 47 + 210
     private static final YearMonth MONTH = YearMonth.of(2026, 6);
+    private static final int PAGE_SIZE = VisitorStatsService.PAGE_SIZE;
 
     // --- 테스트 헬퍼 ---
 
-    private RegionVisitorResponse visitorResponse(RegionVisitorResponse.Item... items) {
+    private RegionVisitorResponse visitorResponse(int totalCount, RegionVisitorResponse.Item... items) {
         return new RegionVisitorResponse(new RegionVisitorResponse.Response(
                 new RegionVisitorResponse.Header("0000", "OK"),
-                new RegionVisitorResponse.Body(new RegionVisitorResponse.Items(List.of(items)), 500, 1, 3)));
+                new RegionVisitorResponse.Body(new RegionVisitorResponse.Items(List.of(items)), PAGE_SIZE, 1, totalCount)));
     }
 
-    private RegionVisitorResponse.Item item(String touDivCd, Double touNum) {
+    private RegionVisitorResponse.Item item(String signguCode, String touDivCd, Double touNum) {
         return new RegionVisitorResponse.Item(
-                "20260601", "47", "47210", "영주시", touDivCd, "구분", touNum);
+                signguCode, "시군구", "1", "월요일", touDivCd, "구분", touNum, "20260601");
     }
 
-    private RegionVisitorStats stats(String statMonth, long visitorCount) {
+    private RegionVisitorStats stats(Region region, String statMonth, long visitorCount) {
         return RegionVisitorStats.builder()
-                .region(REGION)
+                .region(region)
                 .statMonth(statMonth)
                 .visitorCount(visitorCount)
                 .source("한국관광공사 지역별 방문자수")
@@ -83,44 +86,74 @@ class VisitorStatsServiceTest {
     }
 
     @Nested
-    @DisplayName("collectRegion")
-    class CollectRegion {
+    @DisplayName("collectMonth")
+    class CollectMonth {
 
         @Test
-        @DisplayName("현지인을 제외한 방문자수를 합산해 (지역, 연월) 로 저장한다")
-        void collectRegion_응답합산_저장() {
+        @DisplayName("전국 응답에서 우리 지역 행만 골라 현지인을 제외하고 지역별로 합산·저장한다")
+        void collectMonth_전국응답_지역별합산저장() {
             // given
-            given(visitorStatsClient.getLocalRegionVisitors(
-                    "20260601", "20260630", "47", "47210", 1, 500))
-                    .willReturn(visitorResponse(item("1", 500.0), item("2", 1000.0), item("3", 250.4)));
-            given(regionVisitorStatsRepository.findByRegionAndStatMonth(REGION, "2026-06"))
+            given(visitorStatsClient.getLocalRegionVisitors("20260601", "20260630", 1, PAGE_SIZE))
+                    .willReturn(visitorResponse(3,
+                            item("11110", "2", 9999.0), // 종로구, 무시되어야 함
+                            item("47210", "1", 500.0),  // 영주, 현지인 제외
+                            item("47210", "2", 1000.0), // 영주
+                            item("48850", "2", 250.4))); // 하동
+            given(regionVisitorStatsRepository.findByRegionAndStatMonth(Region.YEONGJU, "2026-06"))
+                    .willReturn(Optional.empty());
+            given(regionVisitorStatsRepository.findByRegionAndStatMonth(Region.HADONG, "2026-06"))
                     .willReturn(Optional.empty());
 
             // when
-            long collected = visitorStatsService.collectRegion(REGION, MONTH);
+            Map<Region, Long> collected = visitorStatsService.collectMonth(MONTH);
 
             // then
-            assertThat(collected).isEqualTo(1250L);
+            assertThat(collected).containsOnly(
+                    Map.entry(Region.YEONGJU, 1000L),
+                    Map.entry(Region.HADONG, 250L));
             ArgumentCaptor<RegionVisitorStats> captor = ArgumentCaptor.forClass(RegionVisitorStats.class);
-            verify(regionVisitorStatsRepository).save(captor.capture());
-            assertThat(captor.getValue().getStatMonth()).isEqualTo("2026-06");
-            assertThat(captor.getValue().getVisitorCount()).isEqualTo(1250L);
-            assertThat(captor.getValue().getRegion()).isEqualTo(REGION);
+            verify(regionVisitorStatsRepository, times(2)).save(captor.capture());
+            assertThat(captor.getAllValues())
+                    .extracting(RegionVisitorStats::getRegion, RegionVisitorStats::getStatMonth,
+                            RegionVisitorStats::getVisitorCount)
+                    .containsExactlyInAnyOrder(
+                            tuple(Region.YEONGJU, "2026-06", 1000L),
+                            tuple(Region.HADONG, "2026-06", 250L));
+        }
+
+        @Test
+        @DisplayName("totalCount 가 페이지 크기를 넘으면 다음 페이지를 이어 받아 합산하고 이후 페이지는 호출하지 않는다")
+        void collectMonth_다음페이지_이어받아합산() {
+            // given
+            int totalCount = PAGE_SIZE + 500; // 1500 (PAGE_SIZE=1000)
+            given(visitorStatsClient.getLocalRegionVisitors("20260601", "20260630", 1, PAGE_SIZE))
+                    .willReturn(visitorResponse(totalCount, item("47210", "2", 500.0)));
+            given(visitorStatsClient.getLocalRegionVisitors("20260601", "20260630", 2, PAGE_SIZE))
+                    .willReturn(visitorResponse(totalCount, item("47210", "2", 700.0)));
+            given(regionVisitorStatsRepository.findByRegionAndStatMonth(Region.YEONGJU, "2026-06"))
+                    .willReturn(Optional.empty());
+
+            // when
+            Map<Region, Long> collected = visitorStatsService.collectMonth(MONTH);
+
+            // then
+            assertThat(collected).containsOnly(Map.entry(Region.YEONGJU, 1200L));
+            verify(visitorStatsClient, never())
+                    .getLocalRegionVisitors("20260601", "20260630", 3, PAGE_SIZE);
         }
 
         @Test
         @DisplayName("이미 수집한 연월이면 새로 저장하지 않고 기존 행을 갱신한다")
-        void collectRegion_기존행_갱신() {
+        void collectMonth_기존행_갱신() {
             // given
-            RegionVisitorStats existing = stats("2026-06", 10L);
-            given(visitorStatsClient.getLocalRegionVisitors(
-                    anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt()))
-                    .willReturn(visitorResponse(item("2", 1000.0)));
-            given(regionVisitorStatsRepository.findByRegionAndStatMonth(REGION, "2026-06"))
+            RegionVisitorStats existing = stats(Region.YEONGJU, "2026-06", 10L);
+            given(visitorStatsClient.getLocalRegionVisitors("20260601", "20260630", 1, PAGE_SIZE))
+                    .willReturn(visitorResponse(1, item("47210", "2", 1000.0)));
+            given(regionVisitorStatsRepository.findByRegionAndStatMonth(Region.YEONGJU, "2026-06"))
                     .willReturn(Optional.of(existing));
 
             // when
-            visitorStatsService.collectRegion(REGION, MONTH);
+            visitorStatsService.collectMonth(MONTH);
 
             // then
             assertThat(existing.getVisitorCount()).isEqualTo(1000L);
@@ -128,36 +161,52 @@ class VisitorStatsServiceTest {
         }
 
         @Test
-        @DisplayName("외부 API 호출이 실패해도 예외를 던지지 않고 저장하지 않는다")
-        void collectRegion_호출실패_폴백() {
+        @DisplayName("외부 API 호출이 실패해도 예외를 던지지 않고 빈 결과를 반환하며 저장하지 않는다")
+        void collectMonth_호출실패_폴백() {
             // given (인증키 활용신청 전이거나 한도 초과인 상황)
-            given(visitorStatsClient.getLocalRegionVisitors(
-                    anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt()))
+            given(visitorStatsClient.getLocalRegionVisitors(anyString(), anyString(), anyInt(), anyInt()))
                     .willThrow(new FeignException(500, "visitor-stats 5xx") {});
 
             // when
-            long collected = visitorStatsService.collectRegion(REGION, MONTH);
+            Map<Region, Long> collected = visitorStatsService.collectMonth(MONTH);
 
             // then
-            assertThat(collected).isZero();
+            assertThat(collected).isEmpty();
             verify(regionVisitorStatsRepository, never()).save(any());
         }
 
         @Test
-        @DisplayName("오류 결과코드(HTTP 200) 응답이면 저장하지 않는다")
-        void collectRegion_오류코드_미저장() {
+        @DisplayName("오류 결과코드(HTTP 200) 응답이면 빈 결과를 반환하고 저장하지 않는다")
+        void collectMonth_오류코드_미저장() {
             // given
-            given(visitorStatsClient.getLocalRegionVisitors(
-                    anyString(), anyString(), anyString(), anyString(), anyInt(), anyInt()))
+            given(visitorStatsClient.getLocalRegionVisitors(anyString(), anyString(), anyInt(), anyInt()))
                     .willReturn(new RegionVisitorResponse(new RegionVisitorResponse.Response(
                             new RegionVisitorResponse.Header("30", "SERVICE_KEY_IS_NOT_REGISTERED_ERROR"),
                             null)));
 
             // when
-            long collected = visitorStatsService.collectRegion(REGION, MONTH);
+            Map<Region, Long> collected = visitorStatsService.collectMonth(MONTH);
 
             // then
-            assertThat(collected).isZero();
+            assertThat(collected).isEmpty();
+            verify(regionVisitorStatsRepository, never()).save(any());
+        }
+
+        @Test
+        @DisplayName("2페이지째 호출이 실패하면 1페이지 합산분도 저장하지 않는다")
+        void collectMonth_두번째페이지실패_과소집계방지() {
+            // given
+            int totalCount = PAGE_SIZE + 500;
+            given(visitorStatsClient.getLocalRegionVisitors("20260601", "20260630", 1, PAGE_SIZE))
+                    .willReturn(visitorResponse(totalCount, item("47210", "2", 500.0)));
+            given(visitorStatsClient.getLocalRegionVisitors("20260601", "20260630", 2, PAGE_SIZE))
+                    .willThrow(new FeignException(500, "visitor-stats 5xx") {});
+
+            // when
+            Map<Region, Long> collected = visitorStatsService.collectMonth(MONTH);
+
+            // then
+            assertThat(collected).isEmpty();
             verify(regionVisitorStatsRepository, never()).save(any());
         }
     }
@@ -171,7 +220,7 @@ class VisitorStatsServiceTest {
         void findByContentIds_지역통계_매핑() {
             // given
             given(regionVisitorStatsRepository.findByRegionOrderByStatMonthDesc(REGION))
-                    .willReturn(List.of(stats("2026-06", 100_000L), stats("2026-05", 80_000L)));
+                    .willReturn(List.of(stats(REGION, "2026-06", 100_000L), stats(REGION, "2026-05", 80_000L)));
 
             // when
             Map<String, VisitorStatsResponse> result =

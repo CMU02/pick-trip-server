@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import travel_agency.pick_trip.domain.content.client.dto.RegionVisitorResponse;
 
 /**
- * 공공데이터포털 "한국관광공사 빅데이터 지역별 방문자수"(15101972) 클라이언트.
+ * 공공데이터포털 "한국관광공사 빅데이터 지역별 방문자수"(15101972, DataLabService) 클라이언트.
  * 인증키는 TourAPI 와 같은 {@code PUBLIC_DATA_PORTAL_KEY} 를 재사용한다.
  *
  * <p>제공 단위가 광역/기초지자체라 개별 장소 단위 관광객수는 얻을 수 없다. 콘텐츠 응답에는
@@ -20,15 +20,14 @@ import travel_agency.pick_trip.domain.content.client.dto.RegionVisitorResponse;
 public interface VisitorStatsClient {
 
     /**
-     * 기초지자체(시군구) 일자별 방문자수. {@code areaCd}는 법정동 시도 코드(2자리),
-     * {@code signguCd}는 시도+시군구를 이어 붙인 5자리 코드다(예: 영주시 {@code 47210}).
+     * 기초지자체(시군구) 일자별 방문자수. 매뉴얼(관광빅데이터 v4.1)상 지역 필터 파라미터가 없어
+     * 기간 안의 <b>전국 모든 시군구</b>가 내려온다(하루 ≈ 시군구 수 × 관광객 구분 3종 ≈ 740행).
+     * 호출 측이 {@code signguCode} 로 원하는 지역을 걸러야 한다 (#85).
      */
     @GetMapping("/locgoRegnVisitrDDList")
     RegionVisitorResponse getLocalRegionVisitors(
             @RequestParam String startYmd,
             @RequestParam String endYmd,
-            @RequestParam String areaCd,
-            @RequestParam String signguCd,
             @RequestParam int pageNo,
             @RequestParam int numOfRows
     );
