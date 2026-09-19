@@ -337,6 +337,61 @@ class DaySchedulerTest {
         assertThat(day.stops()).extracting(ScheduledStop::inclinePenaltyMinutes).containsOnly(0);
     }
 
+    @Test
+    @DisplayName("시작 시각을 지정하지 않으면 하루가 09:00 에 시작한다.")
+    void startDayAtNineWhenNotCustomized() {
+        // given
+        List<SchedulingPlace> places = twoPlacesInLine();
+
+        // when
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(), SchedulingContext.car("1"));
+
+        // then
+        assertThat(day.stops().get(0).startTime()).isEqualTo(LocalTime.of(9, 0));
+        assertThat(day.stops().get(1).startTime()).isEqualTo(LocalTime.of(10, 55));
+    }
+
+    @Test
+    @DisplayName("1일차 시작 시각을 지정하면 그 시각부터 시작하고 이후 스톱도 그만큼 밀린다.")
+    void startFirstDayAtCustomTime() {
+        // given
+        List<SchedulingPlace> places = twoPlacesInLine();
+
+        // when
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(),
+                contextStartingAt("1", LocalTime.of(10, 30)));
+
+        // then
+        assertThat(day.stops().get(0).startTime()).isEqualTo(LocalTime.of(10, 30));
+        assertThat(day.stops().get(0).endTime()).isEqualTo(LocalTime.of(12, 0));
+        assertThat(day.stops().get(1).startTime()).isEqualTo(LocalTime.of(12, 25));
+    }
+
+    @Test
+    @DisplayName("일차마다 다른 시작 시각을 지정하면 해당 일차의 시각을 쓴다.")
+    void startEachDayAtItsOwnTime() {
+        // given
+        List<SchedulingPlace> places = twoPlacesInLine();
+
+        // when
+        ScheduledDay day = DayScheduler.schedule(2, DATE, places, Map.of(),
+                contextStartingAt("1", LocalTime.of(10, 30), LocalTime.of(7, 0)));
+
+        // then
+        assertThat(day.stops().get(0).startTime()).isEqualTo(LocalTime.of(7, 0));
+        assertThat(day.stops().get(1).startTime()).isEqualTo(LocalTime.of(8, 55));
+    }
+
+    /** 운영시간 미상이라 개장 대기가 끼지 않는, 25분 떨어진 두 장소. */
+    private static List<SchedulingPlace> twoPlacesInLine() {
+        return List.of(place("1", "A", 35.0, 127.0), place("2", "B", 35.1, 127.0));
+    }
+
+    private static SchedulingContext contextStartingAt(String startContentId, LocalTime... dayStartTimes) {
+        return new SchedulingContext(TravelMode.CAR, TravelMatrix.empty(), startContentId,
+                ElevationProfile.unknown(), List.of(dayStartTimes));
+    }
+
     private static SchedulingPlace place(String contentId, String title, Double latitude, Double longitude) {
         return new SchedulingPlace(contentId, title, null, latitude, longitude, OperatingHours.unknown(), 90, false);
     }

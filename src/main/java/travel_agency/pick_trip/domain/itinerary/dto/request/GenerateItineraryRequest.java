@@ -1,5 +1,8 @@
 package travel_agency.pick_trip.domain.itinerary.dto.request;
 
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
@@ -14,11 +17,15 @@ import travel_agency.pick_trip.domain.itinerary.scheduling.TravelMode;
  *                       미지정이면 최적화 결과의 첫 장소에서 시작한다.
  * @param travelModes    만들 일정안의 이동수단 목록. 모드마다 일정안이 하나씩 나온다.
  *                       미지정·빈 값이면 자동차 단일안이다.
+ * @param dayStartTimes  일차별 하루 시작 시각("HH:mm"). 인덱스가 일차 순서(1일차 = [0])이며, 미지정이거나
+ *                       원소가 null 인 일차는 기본 시각(09:00)으로 시작한다. 일차 수보다 긴 나머지는 무시한다.
+ *                       원소는 {@link #DAY_START_MIN}~{@link #DAY_START_MAX} 범위여야 한다.
  */
 public record GenerateItineraryRequest(
         GenerateMode mode,
         String startContentId,
-        List<TravelMode> travelModes
+        List<TravelMode> travelModes,
+        List<LocalTime> dayStartTimes
 ) {
 
     /**
@@ -27,12 +34,38 @@ public record GenerateItineraryRequest(
      */
     public static final int MAX_VARIANTS = 4;
 
+    /**
+     * 일차 시작 시각 허용 하한. 이보다 이르면 지역 시설이 아직 열지 않아 일정이 성립하지 않는다.
+     */
+    public static final LocalTime DAY_START_MIN = LocalTime.of(5, 0);
+
+    /**
+     * 일차 시작 시각 허용 상한. 21:00 소프트 종료 전에 최소한의 일정이 들어가야 하므로 그보다 늦게
+     * 시작하는 요청은 받지 않는다.
+     */
+    public static final LocalTime DAY_START_MAX = LocalTime.of(18, 0);
+
     public GenerateItineraryRequest {
         // 서비스가 매번 null 을 방어하지 않도록 진입 시점에 한 번만 정규화한다.
         mode = mode == null ? GenerateMode.STRICT : mode;
         // 빈 문자열은 "미지정"과 같은 의미다. 여기서 null 로 모아두면 뒤에서 isBlank 검사를 반복하지 않는다.
         startContentId = (startContentId == null || startContentId.isBlank()) ? null : startContentId.trim();
         travelModes = normalizeModes(travelModes);
+        // 원소 null 은 "그 일차만 기본값"이라 List.copyOf 를 쓸 수 없어 수동 복사한다.
+        dayStartTimes = dayStartTimes == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(dayStartTimes));
+        validateDayStartTimes(dayStartTimes);
+    }
+
+    /** 범위 밖 시각은 Jackson 이 {@code ValueInstantiationException} 으로 감싸 400 으로 응답된다. */
+    private static void validateDayStartTimes(List<LocalTime> dayStartTimes) {
+        for (LocalTime start : dayStartTimes) {
+            if (start != null && (start.isBefore(DAY_START_MIN) || start.isAfter(DAY_START_MAX))) {
+                throw new IllegalArgumentException(
+                        "dayStartTimes 는 %s~%s 범위여야 합니다: %s".formatted(DAY_START_MIN, DAY_START_MAX, start));
+            }
+        }
     }
 
     /** 중복은 같은 일정안을 두 번 만들 뿐이므로 순서를 유지한 채 제거하고, 상한을 넘으면 잘라낸다. */
@@ -49,18 +82,23 @@ public record GenerateItineraryRequest(
         return normalized.isEmpty() ? List.of(TravelMode.CAR) : normalized;
     }
 
+    /** 시작 시각 지정 없이 호출. 필드가 늘어나도 기존 호출부가 그대로 남도록 둔다. */
+    public GenerateItineraryRequest(GenerateMode mode, String startContentId, List<TravelMode> travelModes) {
+        this(mode, startContentId, travelModes, null);
+    }
+
     /** 이동수단 지정 없이 모드·시작 지점만 지정하는 호출. 필드가 늘어나도 기존 호출부가 그대로 남도록 둔다. */
     public GenerateItineraryRequest(GenerateMode mode, String startContentId) {
-        this(mode, startContentId, null);
+        this(mode, startContentId, null, null);
     }
 
     /** 시작 지점 없이 모드만 지정하는 호출. 필드가 늘어나도 기존 호출부가 그대로 남도록 둔다. */
     public GenerateItineraryRequest(GenerateMode mode) {
-        this(mode, null, null);
+        this(mode, null, null, null);
     }
 
     /** 바디 없이 호출된 경우 사용할 기본 요청. 필드가 늘어나도 호출부가 그대로 남도록 팩터리로 둔다. */
     public static GenerateItineraryRequest defaults() {
-        return new GenerateItineraryRequest(null, null, null);
+        return new GenerateItineraryRequest(null, null, null, null);
     }
 }
