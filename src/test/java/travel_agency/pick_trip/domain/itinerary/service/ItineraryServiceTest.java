@@ -177,10 +177,10 @@ class ItineraryServiceTest {
                 List.of(new SaveItineraryRequest.DayRequest(1, List.of(
                         new SaveItineraryRequest.ItemRequest(
                                 "c1", "title-c1", 1, "이유1", true,
-                                LocalTime.of(9, 0), LocalTime.of(10, 30)),
+                                LocalTime.of(9, 0), LocalTime.of(10, 30), null, null),
                         new SaveItineraryRequest.ItemRequest(
                                 "c2", "title-c2", 2, "이유2", false,
-                                LocalTime.of(11, 0), LocalTime.of(12, 30))
+                                LocalTime.of(11, 0), LocalTime.of(12, 30), null, null)
                 ), 25, new BigDecimal("12.30")))
         );
     }
@@ -1216,6 +1216,16 @@ class ItineraryServiceTest {
             assertThat(rest.reason()).contains("오르막");
             assertThat(rest.startTime()).isNotNull();
             assertThat(rest.endTime()).isNotNull();
+            // 미리보기의 상승고도·오르막 시간이 저장 후 응답에도 그대로 유지돼야 한다.
+            List<ItineraryGenerateResponse.Item> generatedItems = generated.days().get(0).items();
+            assertThat(saved.days().get(0).items())
+                    .extracting(ItineraryResponse.Item::elevationGainMeters)
+                    .containsExactlyElementsOf(generatedItems.stream()
+                            .map(ItineraryGenerateResponse.Item::elevationGainMeters).toList());
+            assertThat(saved.days().get(0).items())
+                    .extracting(ItineraryResponse.Item::inclinePenaltyMinutes)
+                    .containsExactlyElementsOf(generatedItems.stream()
+                            .map(ItineraryGenerateResponse.Item::inclinePenaltyMinutes).toList());
 
             // and - 수정 흐름도 같은 요청 형식을 그대로 받는다.
             Itinerary owned = itineraryOwnedBy(USER_ID);
@@ -1237,7 +1247,8 @@ class ItineraryServiceTest {
                                     day.items().stream()
                                             .map(item -> new SaveItineraryRequest.ItemRequest(
                                                     item.contentId(), item.title(), item.order(), item.reason(),
-                                                    false, item.startTime(), item.endTime()))
+                                                    false, item.startTime(), item.endTime(),
+                                                    item.elevationGainMeters(), item.inclinePenaltyMinutes()))
                                             .toList(),
                                     day.totalTravelMinutes(),
                                     BigDecimal.valueOf(day.totalTravelKm())))
@@ -1266,6 +1277,43 @@ class ItineraryServiceTest {
             assertThat(response.days().get(0).items().get(0).startTime()).isEqualTo(LocalTime.of(9, 0));
             assertThat(response.days().get(0).totalTravelMinutes()).isEqualTo(25);
             verify(itineraryRepository).save(any(Itinerary.class));
+        }
+
+        @Test
+        @DisplayName("상승고도·오르막 시간을 요청에 담지 않으면 엔티티는 null 로 저장되고 응답에는 0 으로 내려온다")
+        void elevationFieldsOmitted_entityNullResponseZero() {
+            given(itineraryRepository.save(any(Itinerary.class)))
+                    .willAnswer(invocation -> invocation.getArgument(0));
+            ArgumentCaptor<Itinerary> captor = ArgumentCaptor.forClass(Itinerary.class);
+
+            ItineraryResponse response = itineraryService.save(USER_ID, saveRequest());
+
+            verify(itineraryRepository).save(captor.capture());
+            ItineraryItem savedItem = captor.getValue().getDays().get(0).getItems().get(0);
+            assertThat(savedItem.getElevationGainMeters()).isNull();
+            assertThat(savedItem.getInclinePenaltyMinutes()).isNull();
+            assertThat(response.days().get(0).items().get(0).elevationGainMeters()).isEqualTo(0.0);
+            assertThat(response.days().get(0).items().get(0).inclinePenaltyMinutes()).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("상승고도·오르막 시간을 요청에 담으면 엔티티에 저장되고 응답에 그대로 내려온다")
+        void elevationFieldsProvided_persistedAndReturned() {
+            given(itineraryRepository.save(any(Itinerary.class)))
+                    .willAnswer(invocation -> invocation.getArgument(0));
+            SaveItineraryRequest request = new SaveItineraryRequest(
+                    "경사 코스", Region.HADONG, LocalDate.of(2026, 7, 1), 1,
+                    List.of(new SaveItineraryRequest.DayRequest(1, List.of(
+                            new SaveItineraryRequest.ItemRequest(
+                                    "c1", "title-c1", 1, "이유1", true,
+                                    LocalTime.of(9, 0), LocalTime.of(10, 30), 120.5, 8)
+                    ), 25, new BigDecimal("12.30")))
+            );
+
+            ItineraryResponse response = itineraryService.save(USER_ID, request);
+
+            assertThat(response.days().get(0).items().get(0).elevationGainMeters()).isEqualTo(120.5);
+            assertThat(response.days().get(0).items().get(0).inclinePenaltyMinutes()).isEqualTo(8);
         }
     }
 

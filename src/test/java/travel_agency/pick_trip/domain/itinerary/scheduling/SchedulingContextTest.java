@@ -206,4 +206,74 @@ class SchedulingContextTest {
         assertThat(leg.minutes()).isEqualTo(
                 new SchedulingContext(TravelMode.TRANSIT, null, null).legBetween(a, b).minutes());
     }
+
+    @Test
+    @DisplayName("오르막 도보 구간은 상승고도와 경사 페널티를 구간 값으로 따로 싣는다.")
+    void carrySlopeValuesOnUphillWalkLeg() {
+        // given - 상승 300m
+        SchedulingPlace a = atLongitude("a", 127.0);
+        SchedulingPlace b = atLongitude("b", 127.01);
+        SchedulingContext uphill = transitWithElevations(Map.of(127.0, 100.0, 127.01, 400.0));
+        SchedulingContext flat = transitWithElevations(Map.of(127.0, 100.0, 127.01, 100.0));
+
+        // when
+        TravelMatrix.Leg leg = uphill.legBetween(a, b);
+
+        // then
+        assertThat(leg.elevationGainMeters()).isEqualTo(300.0);
+        assertThat(leg.inclinePenaltyMinutes()).isEqualTo(WalkEffort.slopePenaltyMinutes(300.0));
+        assertThat(leg.minutes()).isEqualTo(flat.legBetween(a, b).minutes() + leg.inclinePenaltyMinutes());
+    }
+
+    @Test
+    @DisplayName("자동차 구간은 고도를 알아도 상승고도·경사 페널티가 0이다.")
+    void noSlopeValuesForCarLeg() {
+        // given
+        SchedulingPlace a = atLongitude("a", 127.0);
+        SchedulingPlace b = atLongitude("b", 127.01);
+        ElevationProfile steep = new ElevationProfile(Map.of(
+                ElevationProfile.key(35.0, 127.0), 100.0,
+                ElevationProfile.key(35.0, 127.01), 400.0));
+        SchedulingContext car = new SchedulingContext(TravelMode.CAR, TravelMatrix.empty(), null, steep);
+
+        // when
+        TravelMatrix.Leg leg = car.legBetween(a, b);
+
+        // then
+        assertThat(leg.elevationGainMeters()).isZero();
+        assertThat(leg.inclinePenaltyMinutes()).isZero();
+    }
+
+    @Test
+    @DisplayName("고도 미상 도보 구간은 상승고도·경사 페널티가 0이다.")
+    void noSlopeValuesWhenElevationUnknown() {
+        // given
+        SchedulingPlace a = atLongitude("a", 127.0);
+        SchedulingPlace b = atLongitude("b", 127.01);
+        SchedulingContext unknown = new SchedulingContext(
+                TravelMode.TRANSIT, TravelMatrix.empty(), null, ElevationProfile.unknown());
+
+        // when
+        TravelMatrix.Leg leg = unknown.legBetween(a, b);
+
+        // then
+        assertThat(leg.elevationGainMeters()).isZero();
+        assertThat(leg.inclinePenaltyMinutes()).isZero();
+    }
+
+    @Test
+    @DisplayName("내리막 도보 구간은 상승고도·경사 페널티가 0이다.")
+    void noSlopeValuesOnDownhillWalkLeg() {
+        // given
+        SchedulingPlace a = atLongitude("a", 127.0);
+        SchedulingPlace b = atLongitude("b", 127.01);
+        SchedulingContext downhill = transitWithElevations(Map.of(127.0, 400.0, 127.01, 100.0));
+
+        // when
+        TravelMatrix.Leg leg = downhill.legBetween(a, b);
+
+        // then
+        assertThat(leg.elevationGainMeters()).isZero();
+        assertThat(leg.inclinePenaltyMinutes()).isZero();
+    }
 }

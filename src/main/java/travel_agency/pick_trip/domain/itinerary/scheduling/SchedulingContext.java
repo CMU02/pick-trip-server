@@ -49,25 +49,20 @@ public record SchedulingContext(TravelMode travelMode, TravelMatrix travelMatrix
             return null;
         }
         double km = GeoDistance.kilometers(from.latitude(), from.longitude(), to.latitude(), to.longitude());
-        int minutes = TravelTimeEstimator.minutes(km, travelMode, travelMatrix.fallbackSpeedKmh())
-                + slopePenaltyMinutes(from, to, km);
-        return new TravelMatrix.Leg(km, minutes);
+        int minutes = TravelTimeEstimator.minutes(km, travelMode, travelMatrix.fallbackSpeedKmh());
+        if (!TravelTimeEstimator.isWalkLeg(km, travelMode)) {
+            // 자동차 구간은 경사 영향이 미미해 페널티 대상이 아니다.
+            return new TravelMatrix.Leg(km, minutes);
+        }
+
+        // 고도 미상·내리막이면 상승고도가 0이라 페널티도 0이 되어 경사 반영 이전과 같아진다.
+        double climbMeters = WalkEffort.climbMeters(elevationMetersAt(from), elevationMetersAt(to));
+        int penaltyMinutes = WalkEffort.slopePenaltyMinutes(climbMeters);
+        return new TravelMatrix.Leg(km, minutes + penaltyMinutes, climbMeters, penaltyMinutes);
     }
 
     /** 해발고도(m). 좌표가 없거나 조회하지 못한 지점이면 null(= 고도 미상). */
     public Double elevationMetersAt(SchedulingPlace place) {
         return place == null ? null : elevationProfile.metersAt(place.latitude(), place.longitude());
-    }
-
-    /**
-     * 도보 구간에만 붙는 오르막 추가 시간(분). 자동차 구간은 경사 영향이 미미해 대상이 아니고,
-     * 고도 미상 구간은 상승고도가 0이라 페널티도 0이 된다.
-     */
-    private int slopePenaltyMinutes(SchedulingPlace from, SchedulingPlace to, double km) {
-        if (!TravelTimeEstimator.isWalkLeg(km, travelMode)) {
-            return 0;
-        }
-        return WalkEffort.slopePenaltyMinutes(
-                WalkEffort.climbMeters(elevationMetersAt(from), elevationMetersAt(to)));
     }
 }

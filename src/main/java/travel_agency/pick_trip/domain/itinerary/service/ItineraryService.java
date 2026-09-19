@@ -418,6 +418,8 @@ public class ItineraryService {
                             .pinned(item.pinned())
                             .visitStart(item.startTime())
                             .visitEnd(item.endTime())
+                            .elevationGainMeters(item.elevationGainMeters())
+                            .inclinePenaltyMinutes(item.inclinePenaltyMinutes())
                             .build()));
                     return day;
                 })
@@ -441,6 +443,8 @@ public class ItineraryService {
                             .pinned(false)
                             .visitStart(item.startTime())
                             .visitEnd(item.endTime())
+                            .elevationGainMeters(item.elevationGainMeters())
+                            .inclinePenaltyMinutes(item.inclinePenaltyMinutes())
                             .build()));
                     return day;
                 })

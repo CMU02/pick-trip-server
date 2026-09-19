@@ -59,9 +59,17 @@ public class ItineraryItem {
     @Column(name = "visit_end")
     private LocalTime visitEnd;
 
+    // 이전 스톱 → 이 스톱 구간의 상승고도(m)·오르막 추가 시간(분). 저장 시 선택 입력이라 nullable 이다.
+    @Column(name = "elevation_gain_meters")
+    private Double elevationGainMeters;
+
+    @Column(name = "incline_penalty_minutes")
+    private Integer inclinePenaltyMinutes;
+
     @Builder
     private ItineraryItem(String contentId, String title, int orderIndex, String reason, boolean pinned,
-                          LocalTime visitStart, LocalTime visitEnd) {
+                          LocalTime visitStart, LocalTime visitEnd,
+                          Double elevationGainMeters, Integer inclinePenaltyMinutes) {
         this.contentId = contentId;
         this.title = title;
         this.orderIndex = orderIndex;
@@ -69,6 +77,8 @@ public class ItineraryItem {
         this.pinned = pinned;
         this.visitStart = visitStart;
         this.visitEnd = visitEnd;
+        this.elevationGainMeters = elevationGainMeters;
+        this.inclinePenaltyMinutes = inclinePenaltyMinutes;
     }
 
     void assignDay(ItineraryDay day) {
