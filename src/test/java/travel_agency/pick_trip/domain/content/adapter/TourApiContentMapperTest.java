@@ -214,6 +214,46 @@ class TourApiContentMapperTest {
         }
 
         @Test
+        @DisplayName("갤러리 항목의 originimgurl이 모두 비어 있으면 대표 이미지로 대체한다")
+        void galleryWithBlankUrlsOnly_fallsBackToFirstImage() {
+            // given - detailImage2가 originimgurl 없는 항목만 준 경우(쓸모없는 갤러리)
+            TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
+                    new TourApiDetailCommonResponse.Response(
+                            new TourApiDetailCommonResponse.Body(
+                                    new TourApiDetailCommonResponse.Items(List.of(
+                                            new TourApiDetailCommonResponse.Item(
+                                                    "126185", "12", "칠불사(하동)",
+                                                    "경상남도 하동군 화개면", "",
+                                                    "055-883-1911", "",
+                                                    "127.62", "35.28",
+                                                    "https://first.jpg", "지리산 자락의 사찰",
+                                                    "HS", "HS01", "HS010600",
+                                                    "48", "850"
+                                            )
+                                    ))
+                            )
+                    )
+            );
+            TourApiDetailImageResponse blankUrlImage = new TourApiDetailImageResponse(
+                    new TourApiDetailImageResponse.Response(
+                            new TourApiDetailImageResponse.Body(
+                                    new TourApiDetailImageResponse.Items(List.of(
+                                            new TourApiDetailImageResponse.Item("126185", "", "빈 URL")
+                                    ))
+                            )
+                    )
+            );
+
+            // when
+            ContentDetailResponse result = mapper.toDetailResponse(
+                    common, new TourApiDetailIntroResponse(null), blankUrlImage);
+
+            // then
+            assertThat(result.images()).hasSize(1);
+            assertThat(result.images().get(0).imageUrl()).isEqualTo("https://first.jpg");
+        }
+
+        @Test
         @DisplayName("갤러리도 대표 이미지도 없으면 빈 목록을 반환한다")
         void noImagesAtAll_returnsEmptyList() {
             // given
@@ -227,6 +267,38 @@ class TourApiContentMapperTest {
                                                     "", "",
                                                     "127.62", "35.28",
                                                     "", "요약",
+                                                    "HS", "HS01", "HS010600",
+                                                    "48", "850"
+                                            )
+                                    ))
+                            )
+                    )
+            );
+
+            // when
+            ContentDetailResponse result = mapper.toDetailResponse(
+                    common,
+                    new TourApiDetailIntroResponse(null),
+                    new TourApiDetailImageResponse(null));
+
+            // then
+            assertThat(result.images()).isEmpty();
+        }
+
+        @Test
+        @DisplayName("firstimage 키 자체가 없어 null로 내려와도 빈 목록을 반환한다")
+        void firstImageIsNull_returnsEmptyList() {
+            // given - TourAPI가 firstimage 키를 아예 빼면 Jackson이 null로 역직렬화한다
+            TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
+                    new TourApiDetailCommonResponse.Response(
+                            new TourApiDetailCommonResponse.Body(
+                                    new TourApiDetailCommonResponse.Items(List.of(
+                                            new TourApiDetailCommonResponse.Item(
+                                                    "999999", "12", "무명 콘텐츠",
+                                                    "경상남도 하동군", "",
+                                                    "", "",
+                                                    "127.62", "35.28",
+                                                    null, "요약",
                                                     "HS", "HS01", "HS010600",
                                                     "48", "850"
                                             )

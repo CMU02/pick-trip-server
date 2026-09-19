@@ -195,6 +195,7 @@ public class TourApiContentMapper {
                 .map(TourApiDetailImageResponse.Items::item)
                 .orElse(Collections.emptyList())
                 .stream()
+                .filter(item -> item.originimgurl() != null && !item.originimgurl().isBlank())
                 .map(item -> new ContentDetailResponse.ImageItem(item.originimgurl(), item.imgname()))
                 .toList();
     }
@@ -202,19 +203,17 @@ public class TourApiContentMapper {
     /**
      * {@code detailImage2}가 갤러리를 못 주는 콘텐츠가 있다(캠핑장·사찰·마을 등). 목록 카드가 쓰는
      * {@code detailCommon2}의 대표 이미지({@code firstimage})는 있는데 상세만 비어 보이는 걸 막기 위해
-     * 갤러리가 비면 대표 이미지 한 장으로 대체한다.
+     * 갤러리가 비면 대표 이미지 한 장으로 대체한다. 캡션은 사진별 설명({@code imgname})의 자리라
+     * 페이지 제목과 중복되지 않도록 {@code null}로 둔다.
      */
     private List<ContentDetailResponse.ImageItem> resolveImages(
             TourApiDetailImageResponse response, TourApiDetailCommonResponse.Item commonItem) {
         List<ContentDetailResponse.ImageItem> images = extractImages(response);
-        if (!images.isEmpty()) {
-            return images;
-        }
         String firstImage = commonItem.firstimage();
-        if (firstImage == null || firstImage.isBlank()) {
+        if (!images.isEmpty() || firstImage == null || firstImage.isBlank()) {
             return images;
         }
-        return List.of(new ContentDetailResponse.ImageItem(firstImage, commonItem.title()));
+        return List.of(new ContentDetailResponse.ImageItem(firstImage, null));
     }
 
     private double parseDouble(String value) {
