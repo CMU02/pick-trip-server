@@ -39,7 +39,10 @@ public record SaveItineraryRequest(
             boolean pinned,
             // 미리보기 응답과 동일한 "HH:mm" 문자열을 그대로 되돌려받기 위해 역직렬화 형식을 고정한다.
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime startTime,
-            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime,
+            // 미리보기 응답의 상승고도·오르막 추가 시간을 그대로 되돌려받는다. 선택 입력이라 nullable 이다.
+            Double elevationGainMeters,
+            Integer inclinePenaltyMinutes
     ) {
     }
 }

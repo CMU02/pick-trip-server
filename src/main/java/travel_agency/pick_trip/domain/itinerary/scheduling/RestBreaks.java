@@ -64,8 +64,7 @@ public final class RestBreaks {
             if (leg != null && TravelTimeEstimator.isWalkLeg(leg.km(), context.travelMode())) {
                 // leg.minutes() 에는 경사 페널티가 이미 포함돼 있다. 오르막을 걷는 시간도 도보 부담이다.
                 walkMinutes += leg.minutes();
-                climbMeters += WalkEffort.climbMeters(
-                        context.elevationMetersAt(from), context.elevationMetersAt(to));
+                climbMeters += leg.elevationGainMeters();
             }
             if (i + 1 == last) {
                 break;
@@ -139,7 +138,8 @@ public final class RestBreaks {
                             .forEach(notes::add);
                     return new ScheduledStop(stop.contentId(), stop.title(), stop.order(), stop.reason(),
                             stop.startTime(), stop.endTime(), notes,
-                            restContentIds.contains(stop.contentId()));
+                            restContentIds.contains(stop.contentId()),
+                            stop.elevationGainMeters(), stop.inclinePenaltyMinutes());
                 })
                 .toList();
         return new ScheduledDay(rebuilt.dayIndex(), rebuilt.date(), stops,

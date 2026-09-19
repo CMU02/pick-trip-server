@@ -294,6 +294,49 @@ class DaySchedulerTest {
         assertThat(day.totalTravelKm()).isEqualTo(20.0);
     }
 
+    @Test
+    @DisplayName("스톱의 상승고도·경사 페널티는 이전 스톱에서 오는 도착 구간 값이고 하루 첫 스톱은 0이다.")
+    void carryArrivalLegSlopeValuesToStops() {
+        // given - 경도 0.01도는 약 0.91km 로 도보 경계 안이고, 상승 300m 구간이다.
+        List<SchedulingPlace> places = List.of(
+                place("1", "A", 35.0, 127.0),
+                place("2", "B", 35.0, 127.01));
+        ElevationProfile uphill = new ElevationProfile(Map.of(
+                ElevationProfile.key(35.0, 127.0), 100.0,
+                ElevationProfile.key(35.0, 127.01), 400.0));
+
+        // when
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(),
+                new SchedulingContext(TravelMode.TRANSIT, TravelMatrix.empty(), "1", uphill));
+
+        // then
+        assertThat(day.stops().get(0).elevationGainMeters()).isZero();
+        assertThat(day.stops().get(0).inclinePenaltyMinutes()).isZero();
+        assertThat(day.stops().get(1).elevationGainMeters()).isEqualTo(300.0);
+        assertThat(day.stops().get(1).inclinePenaltyMinutes())
+                .isEqualTo(WalkEffort.slopePenaltyMinutes(300.0));
+    }
+
+    @Test
+    @DisplayName("자동차 일정안은 고도를 알아도 모든 스톱의 상승고도·경사 페널티가 0이다.")
+    void noSlopeValuesOnCarDay() {
+        // given
+        List<SchedulingPlace> places = List.of(
+                place("1", "A", 35.0, 127.0),
+                place("2", "B", 35.0, 127.01));
+        ElevationProfile uphill = new ElevationProfile(Map.of(
+                ElevationProfile.key(35.0, 127.0), 100.0,
+                ElevationProfile.key(35.0, 127.01), 400.0));
+
+        // when
+        ScheduledDay day = DayScheduler.schedule(1, DATE, places, Map.of(),
+                new SchedulingContext(TravelMode.CAR, TravelMatrix.empty(), "1", uphill));
+
+        // then
+        assertThat(day.stops()).extracting(ScheduledStop::elevationGainMeters).containsOnly(0.0);
+        assertThat(day.stops()).extracting(ScheduledStop::inclinePenaltyMinutes).containsOnly(0);
+    }
+
     private static SchedulingPlace place(String contentId, String title, Double latitude, Double longitude) {
         return new SchedulingPlace(contentId, title, null, latitude, longitude, OperatingHours.unknown(), 90, false);
     }

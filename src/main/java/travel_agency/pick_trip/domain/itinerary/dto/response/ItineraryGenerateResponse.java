@@ -103,7 +103,11 @@ public record ItineraryGenerateResponse(
             boolean addedByAi,
             // 도보 부담이 쌓여 서버가 체력 안배로 자동 삽입한 휴식 스톱이면 true. 삽입 이유는 reason 에 담긴다.
             // AI 추가 제안(addedByAi)과 구분해야 클라이언트가 두 종류를 다르게 안내할 수 있다.
-            boolean addedForRest
+            boolean addedForRest,
+            // 이전 스톱 → 이 스톱 구간의 상승고도(m)와 오르막 추가 시간(분). 하루 첫 스톱·자동차 구간·고도 미상은 0.
+            // 추가 시간은 일차 totalTravelMinutes 에 이미 포함돼 있으며, "오르막 반영 +N분" 캡션용으로만 분리해 내린다.
+            double elevationGainMeters,
+            int inclinePenaltyMinutes
     ) {
     }
 
@@ -166,7 +170,9 @@ public record ItineraryGenerateResponse(
                                         stop.notes(),
                                         // 휴식 스톱도 바구니 밖 장소지만 AI 가 고른 것이 아니므로 addedByAi 는 아니다.
                                         !stop.autoRest() && !titleByContentId.containsKey(stop.contentId()),
-                                        stop.autoRest()
+                                        stop.autoRest(),
+                                        stop.elevationGainMeters(),
+                                        stop.inclinePenaltyMinutes()
                                 ))
                                 .toList(),
                         day.date(),

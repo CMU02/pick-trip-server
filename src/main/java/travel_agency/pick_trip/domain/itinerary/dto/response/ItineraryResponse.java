@@ -42,7 +42,10 @@ public record ItineraryResponse(
             boolean pinned,
             // jackson 시간 모듈 기본값은 LocalTime 을 배열/객체로 직렬화하므로, 계약을 "HH:mm" 문자열로 못박는다.
             @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime startTime,
-            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "HH:mm") LocalTime endTime,
+            // 이전 스톱 → 이 스톱 구간의 상승고도(m)·오르막 추가 시간(분). 저장 전 값이 없던 기존 일정은 0 으로 내려간다.
+            double elevationGainMeters,
+            int inclinePenaltyMinutes
     ) {
     }
 
@@ -60,7 +63,9 @@ public record ItineraryResponse(
                                         item.getReason(),
                                         item.isPinned(),
                                         item.getVisitStart(),
-                                        item.getVisitEnd()
+                                        item.getVisitEnd(),
+                                        item.getElevationGainMeters() == null ? 0 : item.getElevationGainMeters(),
+                                        item.getInclinePenaltyMinutes() == null ? 0 : item.getInclinePenaltyMinutes()
                                 ))
                                 .toList(),
                         day.getTravelMinutes(),

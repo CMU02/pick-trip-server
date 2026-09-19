@@ -63,7 +63,7 @@ class ItineraryControllerTest {
                 List.of(new SaveItineraryRequest.DayRequest(1, List.of(
                         new SaveItineraryRequest.ItemRequest(
                                 "c1", "쌍계사", 1, "오전 배치", true,
-                                LocalTime.of(9, 0), LocalTime.of(10, 30))
+                                LocalTime.of(9, 0), LocalTime.of(10, 30), null, null)
                 ), 0, BigDecimal.ZERO))
         );
     }
@@ -75,7 +75,7 @@ class ItineraryControllerTest {
                 List.of(new ItineraryResponse.Day(UUID.randomUUID(), 1, List.of(
                         new ItineraryResponse.Item(
                                 UUID.randomUUID(), "c1", "쌍계사", 1, "오전 배치", true,
-                                LocalTime.of(9, 0), LocalTime.of(10, 30))
+                                LocalTime.of(9, 0), LocalTime.of(10, 30), 0, 0)
                 ), 0, BigDecimal.ZERO))
         );
     }
@@ -93,7 +93,7 @@ class ItineraryControllerTest {
                     List.of(new ItineraryGenerateResponse.Day(1, List.of(
                             new ItineraryGenerateResponse.Item(
                                     "c1", "쌍계사", 1, "오전 배치",
-                                    LocalTime.of(9, 0), LocalTime.of(10, 30), List.of(), false, false)
+                                    LocalTime.of(9, 0), LocalTime.of(10, 30), List.of(), false, false, 0.0, 0)
                     ), LocalDate.of(2026, 7, 1), 0, 0.0, List.of())),
                     List.of(),
                     List.of(),

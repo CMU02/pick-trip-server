@@ -69,6 +69,7 @@ public final class DayScheduler {
         for (int i = 0; i < ordered.size(); i++) {
             SchedulingPlace place = ordered.get(i);
             Visit visit = sim.visits().get(i);
+            TravelMatrix.Leg arrivalLeg = visit.arrivalLeg();
             stops.add(new ScheduledStop(
                     place.contentId(),
                     place.title(),
@@ -76,7 +77,10 @@ public final class DayScheduler {
                     reasons.get(place.contentId()),
                     toTime(visit.arrival()),
                     toTime(visit.departure()),
-                    visit.notes()));
+                    visit.notes(),
+                    false,
+                    arrivalLeg == null ? 0.0 : arrivalLeg.elevationGainMeters(),
+                    arrivalLeg == null ? 0 : arrivalLeg.inclinePenaltyMinutes()));
         }
 
         List<String> dayNotes = new ArrayList<>(sim.hopWarnings());
@@ -268,6 +272,8 @@ public final class DayScheduler {
         double totalTravelKm = 0.0;
         boolean clamped = false;
         int cursor = DAY_START_MINUTE;
+        // 직전 장소에서 이 장소로 오는 구간. 하루 첫 장소는 도착 구간이 없어 null 이다.
+        TravelMatrix.Leg arrivalLeg = null;
 
         for (int i = 0; i < ordered.size(); i++) {
             SchedulingPlace place = ordered.get(i);
@@ -297,7 +303,7 @@ public final class DayScheduler {
                 departure = MAX_MINUTE_OF_DAY;
                 clamped = true;
             }
-            visits.add(new Visit(arrival, departure, List.copyOf(notes)));
+            visits.add(new Visit(arrival, departure, List.copyOf(notes), arrivalLeg));
             cursor = departure;
 
             if (i + 1 < ordered.size()) {
@@ -317,6 +323,7 @@ public final class DayScheduler {
                 }
                 totalTravelMinutes += hopMinutes;
                 cursor = departure + hopMinutes;
+                arrivalLeg = hop;
             }
         }
 
@@ -331,8 +338,12 @@ public final class DayScheduler {
         return toTime(Math.min(minuteOfDay, MAX_MINUTE_OF_DAY)).format(HH_MM);
     }
 
-    /** 한 장소의 도착·출발 시각(분)과 그 장소에 붙은 안내. */
-    private record Visit(int arrival, int departure, List<String> notes) {
+    /**
+     * 한 장소의 도착·출발 시각(분)과 그 장소에 붙은 안내.
+     *
+     * @param arrivalLeg 직전 장소에서 이 장소로 오는 구간. 하루 첫 장소·좌표 미상 구간은 null 이다.
+     */
+    private record Visit(int arrival, int departure, List<String> notes, TravelMatrix.Leg arrivalLeg) {
     }
 
     private record Simulation(

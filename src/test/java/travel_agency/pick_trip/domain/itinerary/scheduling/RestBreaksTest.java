@@ -170,4 +170,24 @@ class RestBreaksTest {
         // then
         assertThat(inserted).isSameAs(day);
     }
+
+    @Test
+    @DisplayName("휴식 스톱을 끼워 넣어도 기존 스톱의 상승고도·경사 페널티가 유지된다.")
+    void insertKeepsSlopeValues() {
+        // given - c0 에서 c1 로 150m 오르는 도보 구간
+        List<SchedulingPlace> places = line(5, WALK_STEP);
+        SchedulingContext context = transit(WALK_STEP, Map.of(0, 100.0, 1, 250.0));
+        ScheduledDay day = DayScheduler.build(1, DATE, places, Map.of(), context);
+        SchedulingPlace cafe = new SchedulingPlace("cafe", "쉼표카페", 39,
+                35.0, 127.0 + 3 * WALK_STEP, OperatingHours.unknown(), RestBreaks.REST_STAY_MINUTES, false);
+
+        // when
+        ScheduledDay inserted = RestBreaks.insert(day, places, context, List.of(
+                new RestBreaks.Insertion("c3", cafe, WalkEffort.RestReason.CLIMB)));
+
+        // then
+        assertThat(inserted.stops().get(1).elevationGainMeters()).isEqualTo(150.0);
+        assertThat(inserted.stops().get(1).inclinePenaltyMinutes())
+                .isEqualTo(WalkEffort.slopePenaltyMinutes(150.0));
+    }
 }

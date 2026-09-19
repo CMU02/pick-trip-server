@@ -13,8 +13,19 @@ import java.util.Map;
  */
 public record TravelMatrix(Map<String, Leg> legs, double fallbackSpeedKmh) {
 
-    /** 한 구간의 거리(km)와 소요 시간(분). */
-    public record Leg(double km, int minutes) {
+    /**
+     * 한 구간의 거리(km)와 소요 시간(분).
+     *
+     * @param minutes               경사 페널티까지 합산한 총 소요 시간(분)
+     * @param elevationGainMeters   구간 상승고도(m). 도보 구간이 아니거나 고도 미상이면 0
+     * @param inclinePenaltyMinutes 오르막으로 추가된 시간(분). {@code minutes} 에 이미 포함돼 있다
+     */
+    public record Leg(double km, int minutes, double elevationGainMeters, int inclinePenaltyMinutes) {
+
+        /** 경사 정보가 없는 구간(도로 행렬 실측값, 자동차 폴백 등). */
+        public Leg(double km, int minutes) {
+            this(km, minutes, 0.0, 0);
+        }
     }
 
     public TravelMatrix {
