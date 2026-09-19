@@ -17,8 +17,6 @@ public final class DayScheduler {
     /** LocalTime 으로 표현 가능한 마지막 분(23:59). 이 값을 넘기면 자정을 돌아 다음 날 새벽으로 뒤집힌다. */
     private static final int MAX_MINUTE_OF_DAY = 1439;
 
-    private static final int DAY_START_MINUTE = SchedulingPolicy.DAY_START.getHour() * 60
-            + SchedulingPolicy.DAY_START.getMinute();
     private static final int DAY_SOFT_END_MINUTE = SchedulingPolicy.DAY_SOFT_END.getHour() * 60
             + SchedulingPolicy.DAY_SOFT_END.getMinute();
 
@@ -49,7 +47,8 @@ public final class DayScheduler {
             return new ScheduledDay(dayIndex, date, List.of(), 0, 0.0, List.of());
         }
 
-        return build(dayIndex, date, bestOrder(source, context), reasonByContentId, context);
+        List<SchedulingPlace> ordered = bestOrder(source, context, context.dayStartMinute(dayIndex));
+        return build(dayIndex, date, ordered, reasonByContentId, context);
     }
 
     /**
@@ -63,7 +62,7 @@ public final class DayScheduler {
                               Map<String, String> reasonByContentId,
                               SchedulingContext context) {
         Map<String, String> reasons = (reasonByContentId == null) ? Map.of() : reasonByContentId;
-        Simulation sim = simulate(ordered, context);
+        Simulation sim = simulate(ordered, context, context.dayStartMinute(dayIndex));
 
         List<ScheduledStop> stops = new ArrayList<>(ordered.size());
         for (int i = 0; i < ordered.size(); i++) {
@@ -109,7 +108,8 @@ public final class DayScheduler {
      * 시작 지점이 이 일차에 있으면 첫 자리에 고정하고 나머지 자리만 탐색한다.
      * 7개 이하는 전순열로 전역 최적을, 8개 이상은 nearest-neighbor 초기해 + 2-opt 로 근사한다.
      */
-    private static List<SchedulingPlace> bestOrder(List<SchedulingPlace> source, SchedulingContext context) {
+    private static List<SchedulingPlace> bestOrder(List<SchedulingPlace> source, SchedulingContext context,
+                                                   int dayStartMinute) {
         String anchorContentId = context.startContentId();
         int anchorIndex = indexOf(source, anchorContentId);
         List<SchedulingPlace> ordered = (anchorIndex <= 0) ? source : moveToFront(source, anchorIndex);
@@ -120,7 +120,7 @@ public final class DayScheduler {
         }
 
         if (ordered.size() <= SchedulingPolicy.MAX_REORDER_STOPS) {
-            return bestByPermutation(ordered, fixed, context);
+            return bestByPermutation(ordered, fixed, context, dayStartMinute);
         }
 
         // 8개부터는 순열 수가 4만을 넘어 요청 응답 시간 안에 감당할 수 없다.
@@ -132,7 +132,7 @@ public final class DayScheduler {
             // 앵커에 좌표가 없으면 nearest-neighbor 가 뒤로 밀어버리므로 첫 자리로 되돌린다.
             initial = moveToFront(initial, indexOf(initial, anchorContentId));
         }
-        return twoOpt(initial, fixed, context);
+        return twoOpt(initial, fixed, context, dayStartMinute);
     }
 
     /**
@@ -140,7 +140,7 @@ public final class DayScheduler {
      * 항등 순열부터 사전식으로 탐색하고 개선이 있을 때만 교체하므로, 동점이면 AI 원안이 남는다.
      */
     private static List<SchedulingPlace> bestByPermutation(List<SchedulingPlace> ordered, int fixed,
-                                                           SchedulingContext context) {
+                                                           SchedulingContext context, int dayStartMinute) {
         int n = ordered.size();
         int[] indexes = new int[n - fixed];
         for (int i = 0; i < indexes.length; i++) {
@@ -148,7 +148,7 @@ public final class DayScheduler {
         }
 
         List<SchedulingPlace> best = ordered;
-        Simulation bestSim = simulate(ordered, context);
+        Simulation bestSim = simulate(ordered, context, dayStartMinute);
         while (nextPermutation(indexes)) {
             List<SchedulingPlace> candidate = new ArrayList<>(n);
             for (int i = 0; i < fixed; i++) {
@@ -157,7 +157,7 @@ public final class DayScheduler {
             for (int index : indexes) {
                 candidate.add(ordered.get(index));
             }
-            Simulation sim = simulate(candidate, context);
+            Simulation sim = simulate(candidate, context, dayStartMinute);
             if (isBetter(sim, bestSim)) {
                 best = candidate;
                 bestSim = sim;
@@ -171,16 +171,16 @@ public final class DayScheduler {
      * 개선이 없으면 즉시 멈추고, 그렇지 않아도 {@link #MAX_TWO_OPT_PASSES} 패스에서 끊는다.
      */
     private static List<SchedulingPlace> twoOpt(List<SchedulingPlace> initial, int fixed,
-                                               SchedulingContext context) {
+                                               SchedulingContext context, int dayStartMinute) {
         List<SchedulingPlace> best = initial;
-        Simulation bestSim = simulate(best, context);
+        Simulation bestSim = simulate(best, context, dayStartMinute);
 
         for (int pass = 0; pass < MAX_TWO_OPT_PASSES; pass++) {
             boolean improved = false;
             for (int i = fixed; i < best.size() - 1; i++) {
                 for (int j = i + 1; j < best.size(); j++) {
                     List<SchedulingPlace> candidate = reversed(best, i, j);
-                    Simulation sim = simulate(candidate, context);
+                    Simulation sim = simulate(candidate, context, dayStartMinute);
                     if (isBetter(sim, bestSim)) {
                         best = candidate;
                         bestSim = sim;
@@ -263,15 +263,20 @@ public final class DayScheduler {
         a[j] = tmp;
     }
 
-    /** 순서 평가와 최종 시각 배정이 어긋나지 않도록 두 경로 모두 이 시뮬레이션 하나만 사용한다. */
-    private static Simulation simulate(List<SchedulingPlace> ordered, SchedulingContext context) {
+    /**
+     * 순서 평가와 최종 시각 배정이 어긋나지 않도록 두 경로 모두 이 시뮬레이션 하나만 사용한다.
+     *
+     * @param dayStartMinute 이 일차의 하루 시작 시각(자정 기준 분)
+     */
+    private static Simulation simulate(List<SchedulingPlace> ordered, SchedulingContext context,
+                                       int dayStartMinute) {
         List<Visit> visits = new ArrayList<>(ordered.size());
         List<String> hopWarnings = new ArrayList<>();
         int hardViolations = 0;
         int totalTravelMinutes = 0;
         double totalTravelKm = 0.0;
         boolean clamped = false;
-        int cursor = DAY_START_MINUTE;
+        int cursor = dayStartMinute;
         // 직전 장소에서 이 장소로 오는 구간. 하루 첫 장소는 도착 구간이 없어 null 이다.
         TravelMatrix.Leg arrivalLeg = null;
 

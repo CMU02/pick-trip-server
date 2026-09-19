@@ -347,6 +347,25 @@ class ItineraryServiceTest {
         }
 
         @Test
+        @DisplayName("dayStartTimes 를 지정하면 해당 일차 첫 스톱이 그 시각에 시작한다")
+        void assignsCustomDayStartTime() {
+            // given
+            Basket basket = basketWith(Region.HADONG, 2, "c1", "c2");
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> detail(invocation.getArgument(0)));
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+            GenerateItineraryRequest request =
+                    new GenerateItineraryRequest(null, null, null, List.of(LocalTime.of(10, 30)));
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID, request);
+
+            // then
+            assertThat(response.days().get(0).items().get(0).startTime()).isEqualTo(LocalTime.of(10, 30));
+        }
+
+        @Test
         @DisplayName("스케줄링이 실패해도 예외 없이 AI 순서 그대로 미리보기를 반환한다")
         void schedulingFails_fallsBackToAiOrder() {
             // given

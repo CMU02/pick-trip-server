@@ -2,6 +2,9 @@ package travel_agency.pick_trip.domain.itinerary.scheduling;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.LocalTime;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -275,5 +278,56 @@ class SchedulingContextTest {
         // then
         assertThat(leg.elevationGainMeters()).isZero();
         assertThat(leg.inclinePenaltyMinutes()).isZero();
+    }
+
+    // --- 일차별 시작 시각 (#88) ---
+
+    @Test
+    @DisplayName("시작 시각을 지정하지 않으면 모든 일차가 기본 시각(09:00)으로 시작한다.")
+    void defaultDayStartMinuteWhenNotGiven() {
+        // given
+        SchedulingContext context = SchedulingContext.car(null);
+
+        // when
+        int first = context.dayStartMinute(1);
+        int second = context.dayStartMinute(2);
+
+        // then
+        assertThat(first).isEqualTo(9 * 60);
+        assertThat(second).isEqualTo(9 * 60);
+    }
+
+    @Test
+    @DisplayName("지정한 일차만 그 시각으로 시작하고 null·범위 밖 일차는 기본 시각을 쓴다.")
+    void useGivenDayStartMinutePerDay() {
+        // given
+        SchedulingContext context = new SchedulingContext(
+                TravelMode.CAR, TravelMatrix.empty(), null, ElevationProfile.unknown(),
+                Arrays.asList(LocalTime.of(10, 30), null));
+
+        // when
+        int first = context.dayStartMinute(1);
+        int second = context.dayStartMinute(2);
+        int third = context.dayStartMinute(3);
+
+        // then
+        assertThat(first).isEqualTo(10 * 60 + 30);
+        assertThat(second).isEqualTo(9 * 60);
+        assertThat(third).isEqualTo(9 * 60);
+    }
+
+    @Test
+    @DisplayName("시작 시각 목록이 null 이어도 예외 없이 빈 목록으로 정규화한다.")
+    void normalizeNullDayStartTimes() {
+        // given
+        SchedulingContext context = new SchedulingContext(
+                TravelMode.CAR, TravelMatrix.empty(), null, ElevationProfile.unknown(), null);
+
+        // when
+        List<LocalTime> dayStartTimes = context.dayStartTimes();
+
+        // then
+        assertThat(dayStartTimes).isEmpty();
+        assertThat(context.dayStartMinute(1)).isEqualTo(9 * 60);
     }
 }

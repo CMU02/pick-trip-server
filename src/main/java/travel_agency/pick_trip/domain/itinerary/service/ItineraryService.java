@@ -484,7 +484,8 @@ public class ItineraryService {
                     mode,
                     mode == TravelMode.CAR ? roadMatrix : TravelMatrix.empty(),
                     generateRequest.startContentId(),
-                    elevations);
+                    elevations,
+                    generateRequest.dayStartTimes());
             // 자동 삽입된 휴식 스톱을 지표가 되짚을 수 있어야 하는데, 그 장소를 공용 맵에 넣으면
             // 다른 안의 스케줄링에까지 샌다. 안마다 사본을 써서 삽입분을 그 안에만 남긴다.
             Map<String, SchedulingPlace> variantPlaces = new LinkedHashMap<>(placesById);

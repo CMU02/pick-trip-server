@@ -1,5 +1,10 @@
 package travel_agency.pick_trip.domain.itinerary.scheduling;
 
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 /**
  * 일정안 하나를 스케줄링하는 동안 공유하는 입력.
  * 재배분·순서 최적화·시각 배정이 모두 같은 이동시간 모델을 봐야 해서, 파라미터를 계속 늘리는 대신 여기 묶는다.
@@ -9,20 +14,45 @@ package travel_agency.pick_trip.domain.itinerary.scheduling;
  * @param startContentId   여행을 시작할 장소. 앵커 고정 여부만 결정하며, 없으면 첫 스톱도 재배치 대상이 된다.
  * @param elevationProfile 좌표별 해발고도. 도보 구간의 경사 페널티에만 쓰며, 비어 있으면 페널티가 0이라
  *                         고도 조회 이전과 동일하게 동작한다.
+ * @param dayStartTimes    일차별 하루 시작 시각. 인덱스가 일차 순서(1일차 = [0])이며, 없거나 원소가 null 인
+ *                         일차는 {@link SchedulingPolicy#DAY_START} 로 시작한다.
  */
 public record SchedulingContext(TravelMode travelMode, TravelMatrix travelMatrix, String startContentId,
-                                ElevationProfile elevationProfile) {
+                                ElevationProfile elevationProfile, List<LocalTime> dayStartTimes) {
 
     public SchedulingContext {
         // 호출부마다 null 방어를 반복하지 않도록 생성 시점에 한 번만 정규화한다.
         travelMode = travelMode == null ? TravelMode.CAR : travelMode;
         travelMatrix = travelMatrix == null ? TravelMatrix.empty() : travelMatrix;
         elevationProfile = elevationProfile == null ? ElevationProfile.unknown() : elevationProfile;
+        // 원소 null 은 "그 일차만 기본값"이라 List.copyOf 를 쓸 수 없어 수동 복사한다.
+        dayStartTimes = dayStartTimes == null
+                ? List.of()
+                : Collections.unmodifiableList(new ArrayList<>(dayStartTimes));
+    }
+
+    /** 시작 시각을 지정하지 않는 호출부를 위한 축약 생성자. 모든 일차가 기본 시각으로 시작한다. */
+    public SchedulingContext(TravelMode travelMode, TravelMatrix travelMatrix, String startContentId,
+                             ElevationProfile elevationProfile) {
+        this(travelMode, travelMatrix, startContentId, elevationProfile, null);
     }
 
     /** 고도를 조회하지 않는 호출부(도로 행렬 테스트 등)를 위한 축약 생성자. */
     public SchedulingContext(TravelMode travelMode, TravelMatrix travelMatrix, String startContentId) {
         this(travelMode, travelMatrix, startContentId, ElevationProfile.unknown());
+    }
+
+    /**
+     * 해당 일차의 하루 시작 시각(자정 기준 분). 지정이 없으면 {@link SchedulingPolicy#DAY_START}.
+     * 일차 수보다 긴 목록의 나머지 원소는 참조되지 않을 뿐 오류가 아니다.
+     */
+    public int dayStartMinute(int dayIndex) {
+        int i = dayIndex - 1;
+        LocalTime start = (i >= 0 && i < dayStartTimes.size()) ? dayStartTimes.get(i) : null;
+        if (start == null) {
+            start = SchedulingPolicy.DAY_START;
+        }
+        return start.getHour() * 60 + start.getMinute();
     }
 
     /** 도로 행렬 없이 자동차 기준으로만 스케줄링하는 기본 컨텍스트. */
