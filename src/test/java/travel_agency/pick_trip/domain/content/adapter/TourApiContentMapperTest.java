@@ -35,7 +35,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("정상적인 TourAPI 목록 응답을 ContentListResponse로 변환한다")
-        void validResponse_mapsToContentListResponse() {
+        void validResponseMapsToContentListResponse() {
             // given
             // TourApiListResponse.Item 필드 순서: contentid, contenttypeid, title, addr1, addr2, mapx, mapy, firstimage, firstimage2, lclsSystm1, lclsSystm2
             TourApiListResponse.Item item = new TourApiListResponse.Item(
@@ -74,7 +74,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("items.item이 null이면 빈 목록을 반환한다")
-        void nullItems_returnsEmptyList() {
+        void nullItemsReturnsEmptyList() {
             // given
             TourApiListResponse raw = new TourApiListResponse(
                     new TourApiListResponse.Response(
@@ -177,7 +177,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("detailImage2 갤러리가 비어 있으면 detailCommon2 대표 이미지로 대체한다")
-        void emptyGallery_fallsBackToFirstImage() {
+        void emptyGalleryFallsBackToFirstImage() {
             // given - 캠핑장·사찰 등 detailImage2가 빈 갤러리를 주는 콘텐츠
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
@@ -215,7 +215,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("갤러리 항목의 originimgurl이 모두 비어 있으면 대표 이미지로 대체한다")
-        void galleryWithBlankUrlsOnly_fallsBackToFirstImage() {
+        void galleryWithBlankUrlsOnlyFallsBackToFirstImage() {
             // given - detailImage2가 originimgurl 없는 항목만 준 경우(쓸모없는 갤러리)
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
@@ -255,7 +255,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("갤러리도 대표 이미지도 없으면 빈 목록을 반환한다")
-        void noImagesAtAll_returnsEmptyList() {
+        void noImagesAtAllReturnsEmptyList() {
             // given
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
@@ -287,7 +287,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("firstimage 키 자체가 없어 null로 내려와도 빈 목록을 반환한다")
-        void firstImageIsNull_returnsEmptyList() {
+        void firstImageIsNullReturnsEmptyList() {
             // given - TourAPI가 firstimage 키를 아예 빼면 Jackson이 null로 역직렬화한다
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
@@ -319,7 +319,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("법정동 코드만 달린 콘텐츠도 지역을 역매핑한다")
-        void ldongCodeOnly_resolvesRegion() {
+        void ldongCodeOnlyResolvesRegion() {
             // given - 부석사(127669): TourAPI가 legacy areacode/sigungucode를 비우고 법정동 코드만 채워 내려준다
             TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
                     new TourApiDetailCommonResponse.Response(
@@ -394,7 +394,7 @@ class TourApiContentMapperTest {
 
         @Test
         @DisplayName("대상 지역(하동·영주·예천) 밖 항목은 region이 null이다")
-        void outsideMvpRegion_regionIsNull() {
+        void outsideMvpRegionRegionIsNull() {
             // given
             TourApiLocationListResponse raw = locationResponse(
                     locationItem("x", "12", "127.5", "35.1", "100", "1", "1")
