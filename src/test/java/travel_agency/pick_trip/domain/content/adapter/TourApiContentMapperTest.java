@@ -176,6 +176,76 @@ class TourApiContentMapperTest {
         }
 
         @Test
+        @DisplayName("detailImage2 갤러리가 비어 있으면 detailCommon2 대표 이미지로 대체한다")
+        void emptyGallery_fallsBackToFirstImage() {
+            // given - 캠핑장·사찰 등 detailImage2가 빈 갤러리를 주는 콘텐츠
+            TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
+                    new TourApiDetailCommonResponse.Response(
+                            new TourApiDetailCommonResponse.Body(
+                                    new TourApiDetailCommonResponse.Items(List.of(
+                                            new TourApiDetailCommonResponse.Item(
+                                                    "126185", "12", "칠불사(하동)",
+                                                    "경상남도 하동군 화개면", "",
+                                                    "055-883-1911", "",
+                                                    "127.62", "35.28",
+                                                    "https://first.jpg", "지리산 자락의 사찰",
+                                                    "HS", "HS01", "HS010600",
+                                                    "48", "850"
+                                            )
+                                    ))
+                            )
+                    )
+            );
+            TourApiDetailImageResponse emptyImage = new TourApiDetailImageResponse(
+                    new TourApiDetailImageResponse.Response(
+                            new TourApiDetailImageResponse.Body(
+                                    new TourApiDetailImageResponse.Items(List.of())
+                            )
+                    )
+            );
+
+            // when
+            ContentDetailResponse result = mapper.toDetailResponse(
+                    common, new TourApiDetailIntroResponse(null), emptyImage);
+
+            // then
+            assertThat(result.images()).hasSize(1);
+            assertThat(result.images().get(0).imageUrl()).isEqualTo("https://first.jpg");
+        }
+
+        @Test
+        @DisplayName("갤러리도 대표 이미지도 없으면 빈 목록을 반환한다")
+        void noImagesAtAll_returnsEmptyList() {
+            // given
+            TourApiDetailCommonResponse common = new TourApiDetailCommonResponse(
+                    new TourApiDetailCommonResponse.Response(
+                            new TourApiDetailCommonResponse.Body(
+                                    new TourApiDetailCommonResponse.Items(List.of(
+                                            new TourApiDetailCommonResponse.Item(
+                                                    "999999", "12", "무명 콘텐츠",
+                                                    "경상남도 하동군", "",
+                                                    "", "",
+                                                    "127.62", "35.28",
+                                                    "", "요약",
+                                                    "HS", "HS01", "HS010600",
+                                                    "48", "850"
+                                            )
+                                    ))
+                            )
+                    )
+            );
+
+            // when
+            ContentDetailResponse result = mapper.toDetailResponse(
+                    common,
+                    new TourApiDetailIntroResponse(null),
+                    new TourApiDetailImageResponse(null));
+
+            // then
+            assertThat(result.images()).isEmpty();
+        }
+
+        @Test
         @DisplayName("법정동 코드만 달린 콘텐츠도 지역을 역매핑한다")
         void ldongCodeOnly_resolvesRegion() {
             // given - 부석사(127669): TourAPI가 legacy areacode/sigungucode를 비우고 법정동 코드만 채워 내려준다
