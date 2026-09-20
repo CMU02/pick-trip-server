@@ -231,6 +231,16 @@ class OpenAiItineraryClientTest {
             assertThat(strict).contains("contentId, 영문 코드, 괄호 안 숫자 ID를 절대 포함하지 마세요.");
             assertThat(augment).contains("contentId, 영문 코드, 괄호 안 숫자 ID를 절대 포함하지 마세요.");
         }
+
+        @Test
+        @DisplayName("지정 체류시간이 권장 체류시간보다 우선한다는 규칙을 담는다")
+        void includesDesiredStayMinutesPriorityRule() {
+            // when
+            String prompt = client.buildSystemPrompt(request());
+
+            // then
+            assertThat(prompt).contains("지정 체류시간(우선 반영)");
+        }
     }
 
     @Nested

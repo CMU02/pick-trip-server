@@ -23,4 +23,8 @@ public record AiPlace(
         String priority,
         Integer desiredStayMinutes
 ) {
+    /** AUGMENT 후보처럼 id·이름·분류만 아는 장소를 만든다. 상세·우선순위·지정 체류시간은 없다. */
+    public static AiPlace candidate(String contentId, String title, String category) {
+        return new AiPlace(contentId, title, category, null, null, null, null, null, null, null);
+    }
 }

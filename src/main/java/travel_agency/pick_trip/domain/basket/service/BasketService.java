@@ -72,7 +72,11 @@ public class BasketService {
     }
 
     /**
-     * 바구니 항목을 부분 갱신한다. null 인 필드는 변경하지 않는다.
+     * 바구니 항목을 부분 갱신한다. {@code null} 인 필드는 변경하지 않는다.
+     *
+     * <p>ponytail: null 을 "변경 없음"으로 쓰므로 desiredStayMinutes 를 지정한 뒤
+     * 카테고리 기본값으로 되돌릴 방법이 없다({@code UpdateBasketConditionsRequest} 와 동일한 한계).
+     * 비우기가 필요해지면 JsonNullable 같은 래퍼로 필드 부재와 명시적 null 을 구분한다.
      */
     @Transactional
     public BasketItemResponse updateItem(UUID userId, UUID itemId, UpdateBasketItemRequest request) {

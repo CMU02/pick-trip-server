@@ -82,8 +82,12 @@
 | ------ | --------------------------------- | :------: | ------------------------ |
 | GET    | `/api/v1/baskets`                 | O        | 여행 바구니 조회          |
 | POST   | `/api/v1/baskets/items`           | O        | 바구니에 콘텐츠 추가      |
-| PATCH  | `/api/v1/baskets/items/{itemId}`  | O        | 바구니 항목 우선순위 변경 |
+| PATCH  | `/api/v1/baskets/items/{itemId}`  | O        | 바구니 항목 부분 갱신 (우선순위·희망 체류시간) |
 | DELETE | `/api/v1/baskets/items/{itemId}`  | O        | 바구니에서 콘텐츠 제거    |
+
+`POST /api/v1/baskets/items`·`BasketItemResponse` 는 선택 필드로 `desiredStayMinutes`(10~480 사이 분 단위)를 받는다. 사용자가 그 장소에 머무르고 싶은 시간을 직접 지정하며, 지정하지 않으면 콘텐츠 타입별 기본 체류시간을 따른다.
+
+`PATCH /api/v1/baskets/items/{itemId}` 는 `priority`·`desiredStayMinutes` 를 모두 선택 필드로 받는 부분 갱신이다. 값을 보낸 필드만 바뀌고 나머지는 유지되며, 최소 하나는 보내야 한다(둘 다 없으면 400).
 
 ## 일정
 

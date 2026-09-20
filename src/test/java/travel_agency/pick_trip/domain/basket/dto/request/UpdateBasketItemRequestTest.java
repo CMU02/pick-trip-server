@@ -34,8 +34,8 @@ class UpdateBasketItemRequestTest {
     }
 
     @Test
-    @DisplayName("두 필드 모두 null 이면 변경 없음이므로 검증을 통과한다.")
-    void acceptBothNull() {
+    @DisplayName("두 필드 모두 null 이면 검증에 실패한다 (변경할 필드가 없는 빈 요청은 거부한다).")
+    void rejectBothNull() {
         // given
         UpdateBasketItemRequest request = new UpdateBasketItemRequest(null, null);
 
@@ -43,7 +43,7 @@ class UpdateBasketItemRequestTest {
         Set<ConstraintViolation<UpdateBasketItemRequest>> violations = validator.validate(request);
 
         // then
-        assertThat(violations).isEmpty();
+        assertThat(violations).isNotEmpty();
     }
 
     @Test

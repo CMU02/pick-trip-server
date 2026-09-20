@@ -50,10 +50,15 @@ class BasketServiceTest {
     }
 
     private BasketItem itemWithId(UUID itemId, String contentId, Priority priority) {
+        return itemWithId(itemId, contentId, priority, null);
+    }
+
+    private BasketItem itemWithId(UUID itemId, String contentId, Priority priority, Integer desiredStayMinutes) {
         BasketItem item = BasketItem.builder()
                 .contentId(contentId)
                 .title("title-" + contentId)
                 .priority(priority)
+                .desiredStayMinutes(desiredStayMinutes)
                 .build();
         ReflectionTestUtils.setField(item, "itemId", itemId);
         return item;
@@ -213,8 +218,7 @@ class BasketServiceTest {
             // given
             UUID itemId = UUID.randomUUID();
             Basket basket = newBasket();
-            BasketItem item = itemWithId(itemId, "126508", Priority.MUST_VISIT);
-            ReflectionTestUtils.setField(item, "desiredStayMinutes", 60);
+            BasketItem item = itemWithId(itemId, "126508", Priority.MUST_VISIT, 60);
             basket.addItem(item);
             given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
             UpdateBasketItemRequest request = new UpdateBasketItemRequest(Priority.OPTIONAL, null);
