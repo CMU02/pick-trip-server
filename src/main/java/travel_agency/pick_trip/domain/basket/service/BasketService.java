@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import travel_agency.pick_trip.domain.basket.dto.request.AddBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketConditionsRequest;
-import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemPriorityRequest;
+import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketItemResponse;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketResponse;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
@@ -65,18 +65,24 @@ public class BasketService {
                 .thumbnailUrl(request.thumbnailUrl())
                 .contentTypeId(request.contentTypeId())
                 .priority(request.priority())
+                .desiredStayMinutes(request.desiredStayMinutes())
                 .build();
         basket.addItem(item);
         return BasketItemResponse.from(item);
     }
 
     /**
-     * 바구니 항목의 우선순위를 변경한다.
+     * 바구니 항목을 부분 갱신한다. null 인 필드는 변경하지 않는다.
      */
     @Transactional
-    public BasketItemResponse changePriority(UUID userId, UUID itemId, UpdateBasketItemPriorityRequest request) {
+    public BasketItemResponse updateItem(UUID userId, UUID itemId, UpdateBasketItemRequest request) {
         BasketItem item = findOwnedItem(userId, itemId);
-        item.changePriority(request.priority());
+        if (request.priority() != null) {
+            item.changePriority(request.priority());
+        }
+        if (request.desiredStayMinutes() != null) {
+            item.changeDesiredStayMinutes(request.desiredStayMinutes());
+        }
         return BasketItemResponse.from(item);
     }
 

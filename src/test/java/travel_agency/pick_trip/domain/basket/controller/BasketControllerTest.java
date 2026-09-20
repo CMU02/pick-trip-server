@@ -16,7 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import travel_agency.pick_trip.domain.basket.dto.request.AddBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketConditionsRequest;
-import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemPriorityRequest;
+import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketItemResponse;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketResponse;
 import travel_agency.pick_trip.domain.basket.entity.Priority;
@@ -48,7 +48,7 @@ class BasketControllerTest {
     }
 
     private BasketItemResponse itemResponse(UUID itemId, Priority priority) {
-        return new BasketItemResponse(itemId, "2741429", "쌍계사", "https://img.jpg", "12", priority);
+        return new BasketItemResponse(itemId, "2741429", "쌍계사", "https://img.jpg", "12", priority, null);
     }
 
     @Nested
@@ -114,7 +114,7 @@ class BasketControllerTest {
         void addItem_returns201() {
             // given
             AddBasketItemRequest request = new AddBasketItemRequest(
-                    "2741429", Priority.MUST_VISIT, "쌍계사", "https://img.jpg", "12");
+                    "2741429", Priority.MUST_VISIT, "쌍계사", "https://img.jpg", "12", null);
             UUID itemId = UUID.randomUUID();
             given(basketService.addItem(USER_UID, request)).willReturn(itemResponse(itemId, Priority.MUST_VISIT));
 
@@ -131,19 +131,19 @@ class BasketControllerTest {
 
     @Nested
     @DisplayName("PATCH /api/v1/baskets/items/{itemId}")
-    class ChangePriority {
+    class UpdateItem {
 
         @Test
         @DisplayName("우선순위를 변경하면 200과 변경된 항목을 반환한다")
-        void changePriority_returns200() {
+        void updateItem_returns200() {
             // given
             UUID itemId = UUID.randomUUID();
-            UpdateBasketItemPriorityRequest request = new UpdateBasketItemPriorityRequest(Priority.OPTIONAL);
-            given(basketService.changePriority(USER_UID, itemId, request))
+            UpdateBasketItemRequest request = new UpdateBasketItemRequest(Priority.OPTIONAL, null);
+            given(basketService.updateItem(USER_UID, itemId, request))
                     .willReturn(itemResponse(itemId, Priority.OPTIONAL));
 
             // when
-            ResponseEntity<BasketItemResponse> result = basketController.changePriority(principal(), itemId, request);
+            ResponseEntity<BasketItemResponse> result = basketController.updateItem(principal(), itemId, request);
 
             // then
             assertThat(result.getStatusCode()).isEqualTo(HttpStatus.OK);

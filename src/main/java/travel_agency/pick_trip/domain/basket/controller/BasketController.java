@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import travel_agency.pick_trip.domain.basket.dto.request.AddBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketConditionsRequest;
-import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemPriorityRequest;
+import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketItemResponse;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketResponse;
 import travel_agency.pick_trip.domain.basket.service.BasketService;
@@ -55,12 +55,12 @@ public class BasketController {
     }
 
     @PatchMapping("/items/{itemId}")
-    public ResponseEntity<BasketItemResponse> changePriority(
+    public ResponseEntity<BasketItemResponse> updateItem(
             @AuthenticationPrincipal JwtUserPrincipal principal,
             @PathVariable UUID itemId,
-            @Valid @RequestBody UpdateBasketItemPriorityRequest request
+            @Valid @RequestBody UpdateBasketItemRequest request
     ) {
-        return ResponseEntity.ok(basketService.changePriority(principal.getUid(), itemId, request));
+        return ResponseEntity.ok(basketService.updateItem(principal.getUid(), itemId, request));
     }
 
     @DeleteMapping("/items/{itemId}")
