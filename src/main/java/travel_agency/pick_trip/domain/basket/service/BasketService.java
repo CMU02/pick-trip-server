@@ -6,7 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import travel_agency.pick_trip.domain.basket.dto.request.AddBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketConditionsRequest;
-import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemPriorityRequest;
+import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketItemResponse;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketResponse;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
@@ -65,18 +65,28 @@ public class BasketService {
                 .thumbnailUrl(request.thumbnailUrl())
                 .contentTypeId(request.contentTypeId())
                 .priority(request.priority())
+                .desiredStayMinutes(request.desiredStayMinutes())
                 .build();
         basket.addItem(item);
         return BasketItemResponse.from(item);
     }
 
     /**
-     * 바구니 항목의 우선순위를 변경한다.
+     * 바구니 항목을 부분 갱신한다. {@code null} 인 필드는 변경하지 않는다.
+     *
+     * <p>ponytail: null 을 "변경 없음"으로 쓰므로 desiredStayMinutes 를 지정한 뒤
+     * 카테고리 기본값으로 되돌릴 방법이 없다({@code UpdateBasketConditionsRequest} 와 동일한 한계).
+     * 비우기가 필요해지면 JsonNullable 같은 래퍼로 필드 부재와 명시적 null 을 구분한다.
      */
     @Transactional
-    public BasketItemResponse changePriority(UUID userId, UUID itemId, UpdateBasketItemPriorityRequest request) {
+    public BasketItemResponse updateItem(UUID userId, UUID itemId, UpdateBasketItemRequest request) {
         BasketItem item = findOwnedItem(userId, itemId);
-        item.changePriority(request.priority());
+        if (request.priority() != null) {
+            item.changePriority(request.priority());
+        }
+        if (request.desiredStayMinutes() != null) {
+            item.changeDesiredStayMinutes(request.desiredStayMinutes());
+        }
         return BasketItemResponse.from(item);
     }
 

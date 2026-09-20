@@ -22,7 +22,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 import travel_agency.pick_trip.domain.basket.dto.request.AddBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketConditionsRequest;
-import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemPriorityRequest;
+import travel_agency.pick_trip.domain.basket.dto.request.UpdateBasketItemRequest;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketItemResponse;
 import travel_agency.pick_trip.domain.basket.dto.response.BasketResponse;
 import travel_agency.pick_trip.domain.basket.entity.Basket;
@@ -50,10 +50,15 @@ class BasketServiceTest {
     }
 
     private BasketItem itemWithId(UUID itemId, String contentId, Priority priority) {
+        return itemWithId(itemId, contentId, priority, null);
+    }
+
+    private BasketItem itemWithId(UUID itemId, String contentId, Priority priority, Integer desiredStayMinutes) {
         BasketItem item = BasketItem.builder()
                 .contentId(contentId)
                 .title("title-" + contentId)
                 .priority(priority)
+                .desiredStayMinutes(desiredStayMinutes)
                 .build();
         ReflectionTestUtils.setField(item, "itemId", itemId);
         return item;
@@ -147,7 +152,7 @@ class BasketServiceTest {
     class AddItem {
 
         private final AddBasketItemRequest request = new AddBasketItemRequest(
-                "126508", Priority.PREFERRED, "쌍계사", "https://img/1.jpg", "12"
+                "126508", Priority.PREFERRED, "쌍계사", "https://img/1.jpg", "12", null
         );
 
         @Test
@@ -165,6 +170,23 @@ class BasketServiceTest {
             assertThat(response.contentId()).isEqualTo("126508");
             assertThat(response.priority()).isEqualTo(Priority.PREFERRED);
             assertThat(response.title()).isEqualTo("쌍계사");
+        }
+
+        @Test
+        @DisplayName("desiredStayMinutes 가 있으면 함께 저장한다")
+        void withDesiredStayMinutes_savesIt() {
+            // given
+            Basket basket = newBasket();
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            AddBasketItemRequest requestWithStay = new AddBasketItemRequest(
+                    "126508", Priority.PREFERRED, "쌍계사", "https://img/1.jpg", "12", 90
+            );
+
+            // when
+            BasketItemResponse response = basketService.addItem(USER_ID, requestWithStay);
+
+            // then
+            assertThat(response.desiredStayMinutes()).isEqualTo(90);
         }
 
         @Test
@@ -187,28 +209,65 @@ class BasketServiceTest {
     }
 
     @Nested
-    @DisplayName("changePriority")
-    class ChangePriority {
-
-        private final UpdateBasketItemPriorityRequest request =
-                new UpdateBasketItemPriorityRequest(Priority.OPTIONAL);
+    @DisplayName("updateItem")
+    class UpdateItem {
 
         @Test
-        @DisplayName("항목이 있으면 우선순위를 변경한다")
-        void itemExists_changesPriority() {
+        @DisplayName("priority만 있으면 priority만 변경하고 desiredStayMinutes는 그대로 둔다")
+        void onlyPriority_changesOnlyPriority() {
+            // given
+            UUID itemId = UUID.randomUUID();
+            Basket basket = newBasket();
+            BasketItem item = itemWithId(itemId, "126508", Priority.MUST_VISIT, 60);
+            basket.addItem(item);
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            UpdateBasketItemRequest request = new UpdateBasketItemRequest(Priority.OPTIONAL, null);
+
+            // when
+            BasketItemResponse response = basketService.updateItem(USER_ID, itemId, request);
+
+            // then
+            assertThat(item.getPriority()).isEqualTo(Priority.OPTIONAL);
+            assertThat(response.priority()).isEqualTo(Priority.OPTIONAL);
+            assertThat(response.desiredStayMinutes()).isEqualTo(60);
+        }
+
+        @Test
+        @DisplayName("desiredStayMinutes만 있으면 그것만 변경하고 priority는 그대로 둔다")
+        void onlyDesiredStayMinutes_changesOnlyDesiredStayMinutes() {
             // given
             UUID itemId = UUID.randomUUID();
             Basket basket = newBasket();
             BasketItem item = itemWithId(itemId, "126508", Priority.MUST_VISIT);
             basket.addItem(item);
             given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            UpdateBasketItemRequest request = new UpdateBasketItemRequest(null, 90);
 
             // when
-            BasketItemResponse response = basketService.changePriority(USER_ID, itemId, request);
+            BasketItemResponse response = basketService.updateItem(USER_ID, itemId, request);
 
             // then
-            assertThat(item.getPriority()).isEqualTo(Priority.OPTIONAL);
+            assertThat(item.getPriority()).isEqualTo(Priority.MUST_VISIT);
+            assertThat(response.desiredStayMinutes()).isEqualTo(90);
+        }
+
+        @Test
+        @DisplayName("둘 다 있으면 둘 다 변경한다")
+        void both_changesBoth() {
+            // given
+            UUID itemId = UUID.randomUUID();
+            Basket basket = newBasket();
+            BasketItem item = itemWithId(itemId, "126508", Priority.MUST_VISIT);
+            basket.addItem(item);
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            UpdateBasketItemRequest request = new UpdateBasketItemRequest(Priority.OPTIONAL, 90);
+
+            // when
+            BasketItemResponse response = basketService.updateItem(USER_ID, itemId, request);
+
+            // then
             assertThat(response.priority()).isEqualTo(Priority.OPTIONAL);
+            assertThat(response.desiredStayMinutes()).isEqualTo(90);
         }
 
         @Test
@@ -217,10 +276,11 @@ class BasketServiceTest {
             // given
             Basket basket = newBasket();
             given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            UpdateBasketItemRequest request = new UpdateBasketItemRequest(Priority.OPTIONAL, null);
 
             // when
             ThrowableAssert.ThrowingCallable action =
-                    () -> basketService.changePriority(USER_ID, UUID.randomUUID(), request);
+                    () -> basketService.updateItem(USER_ID, UUID.randomUUID(), request);
 
             // then
             assertThatThrownBy(action)
@@ -234,10 +294,11 @@ class BasketServiceTest {
         void noBasket_throwsException() {
             // given
             given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.empty());
+            UpdateBasketItemRequest request = new UpdateBasketItemRequest(Priority.OPTIONAL, null);
 
             // when
             ThrowableAssert.ThrowingCallable action =
-                    () -> basketService.changePriority(USER_ID, UUID.randomUUID(), request);
+                    () -> basketService.updateItem(USER_ID, UUID.randomUUID(), request);
 
             // then
             assertThatThrownBy(action)

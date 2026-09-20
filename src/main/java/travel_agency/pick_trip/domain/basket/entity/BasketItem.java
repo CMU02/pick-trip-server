@@ -64,6 +64,9 @@ public class BasketItem {
     @Column(nullable = false, length = 20)
     private Priority priority;
 
+    @Column(name = "desired_stay_minutes")
+    private Integer desiredStayMinutes;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -74,13 +77,15 @@ public class BasketItem {
             String title,
             String thumbnailUrl,
             String contentTypeId,
-            Priority priority
+            Priority priority,
+            Integer desiredStayMinutes
     ) {
         this.contentId = contentId;
         this.title = title;
         this.thumbnailUrl = thumbnailUrl;
         this.contentTypeId = contentTypeId;
         this.priority = priority;
+        this.desiredStayMinutes = desiredStayMinutes;
     }
 
     /**
@@ -92,5 +97,9 @@ public class BasketItem {
 
     public void changePriority(Priority priority) {
         this.priority = priority;
+    }
+
+    public void changeDesiredStayMinutes(Integer desiredStayMinutes) {
+        this.desiredStayMinutes = desiredStayMinutes;
     }
 }

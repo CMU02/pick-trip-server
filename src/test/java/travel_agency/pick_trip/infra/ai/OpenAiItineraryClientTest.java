@@ -54,16 +54,29 @@ class OpenAiItineraryClientTest {
                 2,
                 List.of("아이와 함께", "걷기 적게"),
                 List.of(new AiPlace(
-                        "c1", "쌍계사", "12", 35.27, 127.58, "09:00~18:00", "연중무휴", "2시간", "꼭 가기")),
+                        "c1", "쌍계사", "12", 35.27, 127.58, "09:00~18:00", "연중무휴", "2시간", "꼭 가기", null)),
                 extraCandidates
+        );
+    }
+
+    private AiItineraryRequest requestWithDesiredStayMinutes(int desiredStayMinutes) {
+        return new AiItineraryRequest(
+                "하동",
+                LocalDate.of(2026, 7, 1),
+                2,
+                List.of("아이와 함께", "걷기 적게"),
+                List.of(new AiPlace(
+                        "c1", "쌍계사", "12", 35.27, 127.58, "09:00~18:00", "연중무휴", "2시간", "꼭 가기",
+                        desiredStayMinutes)),
+                List.of()
         );
     }
 
     /** 후보는 id·이름·분류만 채워진다 (상세 조회를 하지 않기 때문). */
     private List<AiPlace> candidates() {
         return List.of(
-                new AiPlace("x9", "최참판댁", "12", null, null, null, null, null, null),
-                new AiPlace("x10", "화개장터", "14", null, null, null, null, null, null));
+                new AiPlace("x9", "최참판댁", "12", null, null, null, null, null, null, null),
+                new AiPlace("x10", "화개장터", "14", null, null, null, null, null, null, null));
     }
 
     private AiItineraryResult validResult() {
@@ -152,6 +165,30 @@ class OpenAiItineraryClientTest {
                     .contains("쌍계사")
                     .contains("- contentId: c1");
         }
+
+        @Test
+        @DisplayName("desiredStayMinutes 가 있으면 권장 체류시간 대신 지정 체류시간으로 표시한다")
+        void withDesiredStayMinutes_showsAsSpecifiedInsteadOfRecommended() {
+            // when
+            String prompt = client.buildUserPrompt(requestWithDesiredStayMinutes(90));
+
+            // then
+            assertThat(prompt)
+                    .contains("- 지정 체류시간(우선 반영): 90분")
+                    .doesNotContain("권장 체류시간");
+        }
+
+        @Test
+        @DisplayName("desiredStayMinutes 가 없으면 기존처럼 권장 체류시간을 표시한다")
+        void withoutDesiredStayMinutes_showsRecommended() {
+            // when
+            String prompt = client.buildUserPrompt(request());
+
+            // then
+            assertThat(prompt)
+                    .contains("- 권장 체류시간: 2시간")
+                    .doesNotContain("지정 체류시간");
+        }
     }
 
     @Nested
@@ -193,6 +230,16 @@ class OpenAiItineraryClientTest {
             // then
             assertThat(strict).contains("contentId, 영문 코드, 괄호 안 숫자 ID를 절대 포함하지 마세요.");
             assertThat(augment).contains("contentId, 영문 코드, 괄호 안 숫자 ID를 절대 포함하지 마세요.");
+        }
+
+        @Test
+        @DisplayName("지정 체류시간이 권장 체류시간보다 우선한다는 규칙을 담는다")
+        void includesDesiredStayMinutesPriorityRule() {
+            // when
+            String prompt = client.buildSystemPrompt(request());
+
+            // then
+            assertThat(prompt).contains("지정 체류시간(우선 반영)");
         }
     }
 

@@ -639,6 +639,9 @@ public class ItineraryService {
 
     private SchedulingPlace toSchedulingPlace(AiPlace place) {
         Integer contentTypeId = parseContentTypeId(place.category());
+        int stayMinutes = place.desiredStayMinutes() != null
+                ? place.desiredStayMinutes()
+                : StayDurationPolicy.stayMinutes(contentTypeId);
         return new SchedulingPlace(
                 place.contentId(),
                 place.title(),
@@ -646,7 +649,7 @@ public class ItineraryService {
                 place.latitude(),
                 place.longitude(),
                 OperatingHoursParser.parse(place.useTime(), place.restDate()),
-                StayDurationPolicy.stayMinutes(contentTypeId),
+                stayMinutes,
                 // AiPlace 는 우선순위를 한국어 라벨로만 들고 있다(AUGMENT 로 추가된 장소는 null 이라 false).
                 Priority.MUST_VISIT.getLabel().equals(place.priority())
         );
@@ -720,7 +723,8 @@ public class ItineraryService {
                     item.getTitle(),
                     item.getContentTypeId(),
                     null, null, null, null, null,
-                    item.getPriority().getLabel()
+                    item.getPriority().getLabel(),
+                    item.getDesiredStayMinutes()
             );
         }
         return new AiPlace(
@@ -732,7 +736,8 @@ public class ItineraryService {
                 detail.useTime(),
                 detail.restDate(),
                 detail.stayDuration(),
-                item.getPriority().getLabel()
+                item.getPriority().getLabel(),
+                item.getDesiredStayMinutes()
         );
     }
 
@@ -752,9 +757,8 @@ public class ItineraryService {
                             basketContentIds(basket),
                             PageRequest.of(0, MAX_EXTRA_CANDIDATES))
                     .stream()
-                    .map(candidate -> new AiPlace(
-                            candidate.contentId(), candidate.title(), candidate.contentTypeId(),
-                            null, null, null, null, null, null))
+                    .map(candidate -> AiPlace.candidate(
+                            candidate.contentId(), candidate.title(), candidate.contentTypeId()))
                     .toList();
         } catch (Exception e) {
             log.warn("AUGMENT 추가 후보 조회에 실패해 후보 없이 진행합니다.", e);
@@ -814,6 +818,7 @@ public class ItineraryService {
                 detail.useTime(),
                 detail.restDate(),
                 detail.stayDuration(),
+                null,
                 null
         );
     }

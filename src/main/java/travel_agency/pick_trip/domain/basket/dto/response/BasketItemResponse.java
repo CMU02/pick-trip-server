@@ -13,7 +13,8 @@ public record BasketItemResponse(
         String title,
         String thumbnailUrl,
         String contentTypeId,
-        Priority priority
+        Priority priority,
+        Integer desiredStayMinutes
 ) {
 
     public static BasketItemResponse from(BasketItem item) {
@@ -23,7 +24,8 @@ public record BasketItemResponse(
                 item.getTitle(),
                 item.getThumbnailUrl(),
                 item.getContentTypeId(),
-                item.getPriority()
+                item.getPriority(),
+                item.getDesiredStayMinutes()
         );
     }
 }
