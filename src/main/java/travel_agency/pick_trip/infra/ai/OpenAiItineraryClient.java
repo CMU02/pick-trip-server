@@ -135,7 +135,11 @@ public class OpenAiItineraryClient implements AiItineraryClient {
             appendCoordinates(sb, place);
             appendIfPresent(sb, "   - 운영시간", place.useTime());
             appendIfPresent(sb, "   - 휴무일", place.restDate());
-            appendIfPresent(sb, "   - 권장 체류시간", place.stayDuration());
+            if (place.desiredStayMinutes() != null) {
+                sb.append("   - 지정 체류시간(우선 반영): ").append(place.desiredStayMinutes()).append("분\n");
+            } else {
+                appendIfPresent(sb, "   - 권장 체류시간", place.stayDuration());
+            }
         }
     }
 

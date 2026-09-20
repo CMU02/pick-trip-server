@@ -366,6 +366,34 @@ class ItineraryServiceTest {
         }
 
         @Test
+        @DisplayName("바구니 항목에 desiredStayMinutes 가 있으면 카테고리 기본값 대신 그 값으로 체류시간을 계산한다")
+        void usesDesiredStayMinutesForScheduling() {
+            // given
+            Basket basket = Basket.builder().userId(USER_ID).build();
+            basket.updateConditions(Region.HADONG, LocalDate.of(2026, 7, 1), 2, Set.of(TravelCondition.WITH_CHILD));
+            basket.addItem(BasketItem.builder()
+                    .contentId("c1").title("title-c1").contentTypeId("12")
+                    .priority(Priority.MUST_VISIT).desiredStayMinutes(30)
+                    .build());
+            basket.addItem(BasketItem.builder()
+                    .contentId("c2").title("title-c2").contentTypeId("12")
+                    .priority(Priority.MUST_VISIT)
+                    .build());
+            given(basketRepository.findByUserId(USER_ID)).willReturn(Optional.of(basket));
+            given(contentService.getContentDetail(anyString()))
+                    .willAnswer(invocation -> detail(invocation.getArgument(0)));
+            given(aiItineraryClient.generate(any())).willReturn(twoPlaceResult());
+
+            // when
+            ItineraryGenerateResponse response = itineraryService.generate(USER_ID);
+
+            // then
+            ItineraryGenerateResponse.Item first = response.days().get(0).items().get(0);
+            assertThat(first.startTime()).isEqualTo(LocalTime.of(9, 0));
+            assertThat(first.endTime()).isEqualTo(LocalTime.of(9, 30));
+        }
+
+        @Test
         @DisplayName("스케줄링이 실패해도 예외 없이 AI 순서 그대로 미리보기를 반환한다")
         void schedulingFails_fallsBackToAiOrder() {
             // given
