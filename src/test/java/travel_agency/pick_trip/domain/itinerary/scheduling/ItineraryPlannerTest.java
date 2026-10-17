@@ -198,6 +198,30 @@ class ItineraryPlannerTest {
     }
 
     @Test
+    @DisplayName("시작 지점을 지정하지 않으면 AI 첫 장소 대신 총 이동시간이 가장 짧은 출발점으로 배분한다.")
+    void pickShortestStartWithoutStartPlace() {
+        // given
+        // AI 가 처음 적은 c 에서 출발하면 c→b→a 다음 멀리 떨어진 d 가 a 와 같은 일차로 묶인다([c,b][a,d]).
+        // a 에서 출발하면 [a,b][c,d] 로 이동이 절반이다.
+        Map<String, SchedulingPlace> basket = Map.of(
+                "a", coordinatePlace("a", 35.0),
+                "b", coordinatePlace("b", 35.1),
+                "c", coordinatePlace("c", 35.25),
+                "d", coordinatePlace("d", 35.45));
+
+        // when
+        PlannedItinerary itinerary = ItineraryPlanner.plan(
+                "여행", List.of(List.of("c", "a"), List.of("b", "d")), basket, Map.of(), null,
+                SchedulingContext.car(null));
+
+        // then
+        assertThat(itinerary.days().get(0).stops())
+                .extracting(ScheduledStop::contentId).containsExactlyInAnyOrder("a", "b");
+        assertThat(itinerary.days().get(1).stops())
+                .extracting(ScheduledStop::contentId).containsExactlyInAnyOrder("c", "d");
+    }
+
+    @Test
     @DisplayName("시작 지점을 지정하지 않으면 첫 스톱도 순서 최적화 대상이 된다.")
     void optimizeFirstStopWithoutStartPlace() {
         // given
