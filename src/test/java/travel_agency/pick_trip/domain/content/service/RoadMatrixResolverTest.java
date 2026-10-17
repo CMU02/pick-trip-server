@@ -2,6 +2,8 @@ package travel_agency.pick_trip.domain.content.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -15,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import travel_agency.pick_trip.domain.content.client.KakaoMobilityClient;
+import travel_agency.pick_trip.domain.content.client.dto.KakaoDirectionsResponse;
 import travel_agency.pick_trip.domain.content.client.dto.KakaoMultiDestResponse;
 import travel_agency.pick_trip.domain.itinerary.scheduling.OperatingHours;
 import travel_agency.pick_trip.domain.itinerary.scheduling.SchedulingPlace;
@@ -115,8 +118,67 @@ class RoadMatrixResolverTest {
         // then
         assertThat(matrix.legs()).isEmpty();
         assertThat(matrix.fallbackSpeedKmh()).isEqualTo(SchedulingPolicy.AVG_SPEED_KMH);
-        // 첫 콜이 실패하면 남은 콜은 태우지 않는다.
+        // 첫 콜이 실패하면 남은 콜은 태우지 않고, 같은 이유로 실패할 단건 길찾기도 보내지 않는다.
         verify(kakaoMobilityClient, times(1)).getMultiDestinationDirections(any());
+        verify(kakaoMobilityClient, never()).getDirections(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("반경 밖이라 양방향 모두 빠진 쌍은 단건 길찾기로 한 번 실측해 양방향에 담는다")
+    void fillsFarPairWithSingleDirections() {
+        // given - 두 곳이 반경 밖이라 여러 목적지 응답이 비어 있다
+        List<SchedulingPlace> places = List.of(place("a", 35.0), place("b", 35.2));
+        given(kakaoMobilityClient.getMultiDestinationDirections(any())).willReturn(response());
+        given(kakaoMobilityClient.getDirections(anyString(), anyString(), anyBoolean()))
+                .willReturn(directions(0, 30_000, 2_400));
+
+        // when
+        TravelMatrix matrix = resolver.resolve(places);
+
+        // then
+        verify(kakaoMobilityClient, times(1)).getDirections(anyString(), anyString(), anyBoolean());
+        assertThat(matrix.leg("a", "b").km()).isEqualTo(30.0);
+        assertThat(matrix.leg("a", "b").minutes()).isEqualTo(40);
+        assertThat(matrix.leg("b", "a").km()).isEqualTo(30.0);
+    }
+
+    @Test
+    @DisplayName("한쪽 방향만 실측되면 반대 방향에 같은 값을 쓰고 단건 길찾기는 부르지 않는다")
+    void mirrorsOneWayLegWithoutSingleDirections() {
+        // given
+        List<SchedulingPlace> places = List.of(place("a", 35.0), place("b", 35.1));
+        given(kakaoMobilityClient.getMultiDestinationDirections(any()))
+                .willReturn(response(route("b", 0, 13_000, 1_200)))
+                .willReturn(response());
+
+        // when
+        TravelMatrix matrix = resolver.resolve(places);
+
+        // then
+        assertThat(matrix.leg("b", "a")).isEqualTo(matrix.leg("a", "b"));
+        verify(kakaoMobilityClient, never()).getDirections(anyString(), anyString(), anyBoolean());
+    }
+
+    @Test
+    @DisplayName("단건 길찾기가 실패해도 예외 없이 그 구간을 비워 직선거리 폴백에 맡긴다")
+    void leavesFarPairEmptyWhenSingleDirectionsFail() {
+        // given
+        List<SchedulingPlace> places = List.of(place("a", 35.0), place("b", 35.2), place("c", 35.4));
+        given(kakaoMobilityClient.getMultiDestinationDirections(any())).willReturn(response());
+        given(kakaoMobilityClient.getDirections(anyString(), anyString(), anyBoolean()))
+                .willThrow(new IllegalStateException("timeout"));
+
+        // when
+        TravelMatrix matrix = resolver.resolve(places);
+
+        // then
+        assertThat(matrix.legs()).isEmpty();
+        assertThat(matrix.fallbackSpeedKmh()).isEqualTo(SchedulingPolicy.AVG_SPEED_KMH);
+    }
+
+    private KakaoDirectionsResponse directions(int resultCode, int distanceM, int durationS) {
+        return new KakaoDirectionsResponse(List.of(new KakaoDirectionsResponse.Route(
+                resultCode, new KakaoMultiDestResponse.Summary(distanceM, durationS))));
     }
 
     @Test

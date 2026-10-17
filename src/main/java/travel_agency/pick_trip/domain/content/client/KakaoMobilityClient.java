@@ -1,8 +1,11 @@
 package travel_agency.pick_trip.domain.content.client;
 
 import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import travel_agency.pick_trip.domain.content.client.dto.KakaoDirectionsResponse;
 import travel_agency.pick_trip.domain.content.client.dto.KakaoMultiDestRequest;
 import travel_agency.pick_trip.domain.content.client.dto.KakaoMultiDestResponse;
 
@@ -19,4 +22,16 @@ public interface KakaoMobilityClient {
 
     @PostMapping("/v1/destinations/directions")
     KakaoMultiDestResponse getMultiDestinationDirections(@RequestBody KakaoMultiDestRequest request);
+
+    /**
+     * 출발지 1점 → 목적지 1점 자동차 길찾기. 여러 목적지 길찾기의 반경(10km) 밖 구간을 채울 때 쓴다.
+     *
+     * @param origin      {@code "경도,위도"}
+     * @param destination {@code "경도,위도"}
+     * @param summary     true 면 경로 상세 없이 요약(거리·시간)만 받는다
+     */
+    @GetMapping("/v1/directions")
+    KakaoDirectionsResponse getDirections(@RequestParam("origin") String origin,
+                                          @RequestParam("destination") String destination,
+                                          @RequestParam("summary") boolean summary);
 }
