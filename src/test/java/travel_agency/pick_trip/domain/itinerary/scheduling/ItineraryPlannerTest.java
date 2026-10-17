@@ -198,6 +198,55 @@ class ItineraryPlannerTest {
     }
 
     @Test
+    @DisplayName("시작 지점을 지정하지 않으면 AI 첫 장소 대신 총 이동시간이 가장 짧은 출발점으로 배분한다.")
+    void pickShortestStartWithoutStartPlace() {
+        // given
+        // AI 가 처음 적은 c 에서 출발하면 c→b→a 다음 멀리 떨어진 d 가 a 와 같은 일차로 묶인다([c,b][a,d]).
+        // a 에서 출발하면 [a,b][c,d] 로 이동이 절반이다.
+        Map<String, SchedulingPlace> basket = Map.of(
+                "a", coordinatePlace("a", 35.0),
+                "b", coordinatePlace("b", 35.1),
+                "c", coordinatePlace("c", 35.25),
+                "d", coordinatePlace("d", 35.45));
+
+        // when
+        PlannedItinerary itinerary = ItineraryPlanner.plan(
+                "여행", List.of(List.of("c", "a"), List.of("b", "d")), basket, Map.of(), null,
+                SchedulingContext.car(null));
+
+        // then
+        assertThat(itinerary.days().get(0).stops())
+                .extracting(ScheduledStop::contentId).containsExactlyInAnyOrder("a", "b");
+        assertThat(itinerary.days().get(1).stops())
+                .extracting(ScheduledStop::contentId).containsExactlyInAnyOrder("c", "d");
+    }
+
+    @Test
+    @DisplayName("출발점을 비교할 때 전날 마지막 장소에서 다음 날 첫 장소로 가는 이동도 더한다.")
+    void countOvernightLegWhenPickingStart() {
+        // given
+        // b·d 는 남서쪽에 붙어 있고 a 는 가운데, c 는 북동쪽 끝이다.
+        // AI 첫 장소 a 에서 출발한 [a,c][d,b] 와 [b,d][a,c] 는 하루 안 이동이 같지만,
+        // 앞의 안은 밤사이 c(북동쪽)에서 d(남서쪽)로 되돌아가야 해서 날짜를 넘어가는 이동이 훨씬 길다.
+        Map<String, SchedulingPlace> basket = Map.of(
+                "a", coordinatePlace("a", 35.18, 127.25),
+                "b", coordinatePlace("b", 35.01, 127.03),
+                "c", coordinatePlace("c", 35.36, 127.37),
+                "d", coordinatePlace("d", 35.02, 127.04));
+
+        // when
+        PlannedItinerary itinerary = ItineraryPlanner.plan(
+                "여행", List.of(List.of("a", "b"), List.of("c", "d")), basket, Map.of(), null,
+                SchedulingContext.car(null));
+
+        // then
+        assertThat(itinerary.days().get(0).stops())
+                .extracting(ScheduledStop::contentId).containsExactlyInAnyOrder("b", "d");
+        assertThat(itinerary.days().get(1).stops())
+                .extracting(ScheduledStop::contentId).containsExactlyInAnyOrder("a", "c");
+    }
+
+    @Test
     @DisplayName("시작 지점을 지정하지 않으면 첫 스톱도 순서 최적화 대상이 된다.")
     void optimizeFirstStopWithoutStartPlace() {
         // given
@@ -296,6 +345,11 @@ class ItineraryPlannerTest {
     private static SchedulingPlace coordinatePlace(String contentId, double latitude) {
         return new SchedulingPlace(
                 contentId, contentId, null, latitude, 127.0, OperatingHours.unknown(), 90, false);
+    }
+
+    private static SchedulingPlace coordinatePlace(String contentId, double latitude, double longitude) {
+        return new SchedulingPlace(
+                contentId, contentId, null, latitude, longitude, OperatingHours.unknown(), 90, false);
     }
 
     private static SchedulingPlace mustVisitPlace(String contentId, double latitude) {

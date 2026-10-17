@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * AI 가 제안한 일차별 장소 배열을 실제 여행 가능한 일정으로 확정한다.
@@ -31,7 +32,8 @@ public final class ItineraryPlanner {
      * @param context 이동수단·도로 행렬·시작 지점. 이동수단에 따라 구간 소요 시간 모델이 달라져
      *                같은 장소 집합이라도 일차 배분·방문 순서가 달라진다.
      *                시작 지점을 지정하면 그 장소에서 경로를 시작해 해당 일차의 첫 스톱으로 고정하고,
-     *                null 이면 좌표를 가진 첫 장소에서 시작하되 첫 자리도 재배치 대상이 된다.
+     *                null 이면 좌표를 가진 장소마다 출발점으로 삼아 보고 총 이동시간이 가장 짧은 안을 고르며,
+     *                첫 자리도 재배치 대상이 된다.
      */
     public static PlannedItinerary plan(String title,
                                         List<List<String>> dayContentIds,
@@ -43,11 +45,39 @@ public final class ItineraryPlanner {
         Map<String, SchedulingPlace> places = (placesById == null) ? Map.of() : placesById;
         Map<String, String> reasons = (reasonByContentId == null) ? Map.of() : reasonByContentId;
 
+        List<List<String>> filtered = filterToBasket(requested, places);
+        if (context.startContentId() != null) {
+            return planFrom(title, filtered, places, reasons, travelDate, context);
+        }
+
+        // 시작 지점이 없으면 재배분은 목록의 첫 좌표 장소, 즉 AI 가 처음 적은 장소에서 출발한다.
+        // 그 출발점 하나에 따라 같은 바구니의 이동시간이 최적 대비 +2%~+36% 로 갈려(#97 측정),
+        // 좌표를 가진 장소마다 출발점으로 삼아 계획해 보고 총 이동시간이 가장 짧은 안을 고른다.
+        // 동률이면 먼저 시도한 AI 첫 장소 안이 남는다.
+        // shortcut: 이동시간만 비교하고 운영시간 위반 수는 보지 않는다. 위반이 늘어난 안이 뽑힌다는 제보가 오면 비교 기준에 더한다.
+        PlannedItinerary best = null;
+        int bestMinutes = Integer.MAX_VALUE;
+        for (String start : coordinateIdsInOrder(filtered, places)) {
+            PlannedItinerary candidate = planFrom(title, startingWith(filtered, start), places, reasons, travelDate,
+                    context);
+            int minutes = routeMinutes(candidate, places, context);
+            if (minutes < bestMinutes) {
+                best = candidate;
+                bestMinutes = minutes;
+            }
+        }
+        return best != null ? best : planFrom(title, filtered, places, reasons, travelDate, context);
+    }
+
+    /** 재배분 → 휴무일 재배치 → 일차별 시각 배정. 재배분은 목록의 첫 좌표 장소(또는 지정된 시작 지점)에서 출발한다. */
+    private static PlannedItinerary planFrom(String title,
+                                             List<List<String>> filtered,
+                                             Map<String, SchedulingPlace> places,
+                                             Map<String, String> reasons,
+                                             LocalDate travelDate,
+                                             SchedulingContext context) {
         List<String> adjustments = new ArrayList<>();
-        List<List<String>> daysPlan = filterToBasket(requested, places);
-        // 시작 지점 지정 여부와 무관하게 재배분한다. AI 배분은 초기값일 뿐이고,
-        // 미지정이면 RouteOptimizer 가 좌표를 가진 첫 장소를 출발점으로 삼는다.
-        daysPlan = RouteOptimizer.redistribute(daysPlan, places, context);
+        List<List<String>> daysPlan = RouteOptimizer.redistribute(filtered, places, context);
 
         // 휴무일이지만 옮길 일차가 없어 그대로 둔 장소. 스케줄링 후 안내를 덧붙이기 위해 모아둔다.
         Set<String> stillClosed = new HashSet<>();
@@ -70,6 +100,50 @@ public final class ItineraryPlanner {
         }
 
         return new PlannedItinerary(title, days, adjustments);
+    }
+
+    /** 좌표를 가진 장소 id 를 입력 순서대로. 재배분이 출발점으로 삼을 수 있는 후보다. */
+    private static List<String> coordinateIdsInOrder(List<List<String>> daysPlan, Map<String, SchedulingPlace> places) {
+        return daysPlan.stream()
+                .flatMap(List::stream)
+                .filter(contentId -> places.get(contentId).hasCoordinates())
+                .toList();
+    }
+
+    /** {@code start} 를 1일차 맨 앞으로 옮긴 사본. 재배분은 목록을 펼친 순서에서 첫 좌표 장소를 출발점으로 삼는다. */
+    private static List<List<String>> startingWith(List<List<String>> daysPlan, String start) {
+        List<List<String>> result = new ArrayList<>(daysPlan.size());
+        for (List<String> day : daysPlan) {
+            result.add(day.stream().filter(contentId -> !contentId.equals(start))
+                    .collect(Collectors.toCollection(ArrayList::new)));
+        }
+        result.get(0).add(0, start);
+        return result;
+    }
+
+    /**
+     * 하루 안 이동시간에 전날 마지막 장소 → 다음 날 첫 장소 이동을 더한 값.
+     * 일정은 다음 날이 전날 마지막 장소 근처에서 시작한다고 보므로, 날짜를 넘어가는 이동을 빼고 비교하면
+     * 하루 안은 짧아도 밤사이 크게 되돌아가는 안이 뽑힌다(#97 측정: 넣으면 총 이동이 3~5% 더 준다).
+     * 숙소 위치는 입력받지 않아 숙소 왕복은 들어가지 않는다.
+     */
+    private static int routeMinutes(PlannedItinerary itinerary, Map<String, SchedulingPlace> places,
+                                    SchedulingContext context) {
+        int minutes = 0;
+        SchedulingPlace previousLast = null;
+        for (ScheduledDay day : itinerary.days()) {
+            minutes += day.totalTravelMinutes();
+            if (day.stops().isEmpty()) {
+                continue;
+            }
+            if (previousLast != null) {
+                TravelMatrix.Leg overnight = context.legBetween(previousLast, places.get(day.stops().get(0).contentId()));
+                // DayScheduler 와 같게, 좌표가 없어 잴 수 없는 구간은 고정 추정치를 쓴다.
+                minutes += (overnight == null) ? SchedulingPolicy.UNKNOWN_HOP_MINUTES : overnight.minutes();
+            }
+            previousLast = places.get(day.stops().get(day.stops().size() - 1).contentId());
+        }
+        return minutes;
     }
 
     /**
