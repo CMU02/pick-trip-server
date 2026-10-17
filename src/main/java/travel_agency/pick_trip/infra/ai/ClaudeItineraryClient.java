@@ -1,10 +1,13 @@
 package travel_agency.pick_trip.infra.ai;
 
 import java.util.List;
+import com.anthropic.errors.AnthropicIoException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.ResourceAccessException;
 import travel_agency.pick_trip.gloal.error.ErrorCode;
 import travel_agency.pick_trip.gloal.error.exception.ItineraryException;
 import travel_agency.pick_trip.infra.ai.dto.AiItineraryRequest;
@@ -12,16 +15,16 @@ import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult;
 import travel_agency.pick_trip.infra.ai.dto.AiPlace;
 
 /**
- * OpenAI 기반 AI 일정 생성 구현체 (Spring AI {@link ChatClient} 사용).
- * 사용 모델은 {@code spring.ai.openai.chat.options.model} 설정으로 주입한다.
+ * Claude 기반 AI 일정 생성 구현체 (Spring AI {@link ChatClient} 사용).
+ * 사용 모델은 {@code spring.ai.anthropic.chat.model} 설정으로 주입한다.
  *
- * <p>일정 JSON 스키마는 {@code entity()} 의 structured output 변환으로 강제해 파싱 실패를 최소화하고,
+ * <p>일정 JSON 스키마는 {@link BeanOutputConverter} 의 형식 안내와 변환으로 강제해 파싱 실패를 최소화하고,
  * 호출 실패·타임아웃·파싱 실패는 {@link ItineraryException} 으로 변환해 던진다.
  * 보안 규칙상 프롬프트 전문과 AI 응답 원문은 운영 로그에 남기지 않는다(디버그 레벨만 허용).
  */
 @Slf4j
 @Component
-public class OpenAiItineraryClient implements AiItineraryClient {
+public class ClaudeItineraryClient implements AiItineraryClient {
 
     /** 모드별 한 문단만 갈아끼운다. 나머지 제약은 두 모드가 동일해야 하므로 본문을 복제하지 않는다. */
     private static final String SYSTEM_PROMPT_TEMPLATE = """
@@ -57,18 +60,24 @@ public class OpenAiItineraryClient implements AiItineraryClient {
 
     private final ChatClient chatClient;
 
-    public OpenAiItineraryClient(ChatClient.Builder chatClientBuilder) {
+    /** 응답 형식 안내문과 파싱을 같은 변환기로 처리해 둘이 어긋나지 않게 한다. */
+    private final BeanOutputConverter<AiItineraryResult> outputConverter =
+            new BeanOutputConverter<>(AiItineraryResult.class);
+
+    public ClaudeItineraryClient(ChatClient.Builder chatClientBuilder) {
         this.chatClient = chatClientBuilder.build();
     }
 
     @Override
     public AiItineraryResult generate(AiItineraryRequest request) {
         try {
-            AiItineraryResult result = chatClient.prompt()
+            ChatResponse response = chatClient.prompt()
                     .system(buildSystemPrompt(request))
-                    .user(buildUserPrompt(request))
+                    .user(buildUserPrompt(request) + System.lineSeparator() + outputConverter.getFormat())
                     .call()
-                    .entity(AiItineraryResult.class);
+                    .chatResponse();
+            String text = lastText(response);
+            AiItineraryResult result = (text == null) ? null : outputConverter.convert(text);
 
             if (result == null || result.days() == null || result.days().isEmpty()) {
                 log.warn("AI 일정 생성 응답이 비어 있습니다.");
@@ -77,7 +86,7 @@ public class OpenAiItineraryClient implements AiItineraryClient {
             return result;
         } catch (ItineraryException e) {
             throw e;
-        } catch (ResourceAccessException e) {
+        } catch (AnthropicIoException e) {
             // 연결/응답 타임아웃 등 네트워크 계열 실패
             log.warn("AI 일정 생성 타임아웃이 발생했습니다.");
             throw new ItineraryException(ErrorCode.ITINERARY_GENERATION_TIMEOUT);
@@ -86,6 +95,24 @@ public class OpenAiItineraryClient implements AiItineraryClient {
             log.warn("AI 일정 생성에 실패했습니다. type={}", e.getClass().getSimpleName());
             throw new ItineraryException(ErrorCode.ITINERARY_PROVIDER_FAILED);
         }
+    }
+
+    /**
+     * 텍스트가 있는 마지막 결과를 고른다.
+     * Claude 는 사고(thinking) 블록을 텍스트 없는 결과로 먼저 돌려주는데, entity() 는 첫 결과만 파싱해 실패한다.
+     */
+    private static String lastText(ChatResponse response) {
+        if (response == null) {
+            return null;
+        }
+        String text = null;
+        for (Generation generation : response.getResults()) {
+            String candidate = generation.getOutput().getText();
+            if (candidate != null && !candidate.isBlank()) {
+                text = candidate;
+            }
+        }
+        return text;
     }
 
     /**

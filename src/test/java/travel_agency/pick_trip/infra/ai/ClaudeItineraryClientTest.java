@@ -7,14 +7,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import com.anthropic.errors.AnthropicIoException;
+import java.util.Arrays;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.web.client.ResourceAccessException;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
 import travel_agency.pick_trip.gloal.error.ErrorCode;
 import travel_agency.pick_trip.gloal.error.exception.PickTripException;
 import travel_agency.pick_trip.infra.ai.dto.AiItineraryRequest;
 import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult;
-import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult.AiDay;
-import travel_agency.pick_trip.infra.ai.dto.AiItineraryResult.AiItem;
 import travel_agency.pick_trip.infra.ai.dto.AiPlace;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,14 +27,14 @@ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
 import static org.mockito.Mockito.mock;
 
 /**
- * {@link OpenAiItineraryClient} 단위 테스트.
+ * {@link ClaudeItineraryClient} 단위 테스트.
  * 외부 AI 제공자를 실제 호출하지 않고 Spring AI {@link ChatClient} 플루언트 체인을 Mockito 대역으로 처리한다.
  */
-@DisplayName("OpenAiItineraryClient")
-class OpenAiItineraryClientTest {
+@DisplayName("ClaudeItineraryClient")
+class ClaudeItineraryClientTest {
 
     private ChatClient chatClient;
-    private OpenAiItineraryClient client;
+    private ClaudeItineraryClient client;
 
     @BeforeEach
     void setUp() {
@@ -40,7 +42,7 @@ class OpenAiItineraryClientTest {
         ChatClient.Builder builder = mock(ChatClient.Builder.class);
         chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
         given(builder.build()).willReturn(chatClient);
-        client = new OpenAiItineraryClient(builder);
+        client = new ClaudeItineraryClient(builder);
     }
 
     private AiItineraryRequest request() {
@@ -79,17 +81,22 @@ class OpenAiItineraryClientTest {
                 new AiPlace("x10", "화개장터", "14", null, null, null, null, null, null, null));
     }
 
-    private AiItineraryResult validResult() {
-        return new AiItineraryResult(
-                "하동 1박 2일 가족 여행",
-                List.of(new AiDay(1, List.of(new AiItem("c1", 1, "오전 운영시간에 맞춰 배치했습니다."))))
-        );
+    private static final String VALID_JSON = """
+            {"title": "하동 1박 2일 가족 여행",
+             "days": [{"dayIndex": 1, "items": [{"contentId": "c1", "order": 1, "reason": "오전 운영시간에 맞춰 배치했습니다."}]}]}
+            """;
+
+    // 플루언트 체인(prompt -> system -> user -> call -> chatResponse)이 주어진 텍스트의 결과들을 돌려주도록 설정한다
+    private void givenResponseTexts(String... texts) {
+        List<Generation> generations = Arrays.stream(texts)
+                .map(text -> new Generation(new AssistantMessage(text)))
+                .toList();
+        givenResponse(new ChatResponse(generations));
     }
 
-    // 플루언트 체인(prompt -> system -> user -> call -> entity)의 마지막 단계가 주어진 동작을 하도록 설정한다
-    private void givenEntity(AiItineraryResult result) {
-        given(chatClient.prompt().system(anyString()).user(anyString()).call()
-                .entity(AiItineraryResult.class)).willReturn(result);
+    private void givenResponse(ChatResponse response) {
+        given(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                .willReturn(response);
     }
 
     @Nested
@@ -100,7 +107,7 @@ class OpenAiItineraryClientTest {
         @DisplayName("AI가 유효한 일정을 반환하면 결과를 그대로 반환한다")
         void validResponse_returnsResult() {
             // given
-            givenEntity(validResult());
+            givenResponseTexts(VALID_JSON);
 
             // when
             AiItineraryResult result = client.generate(request());
@@ -108,6 +115,19 @@ class OpenAiItineraryClientTest {
             // then
             assertThat(result.title()).isEqualTo("하동 1박 2일 가족 여행");
             assertThat(result.days()).hasSize(1);
+            assertThat(result.days().get(0).items().get(0).contentId()).isEqualTo("c1");
+        }
+
+        @Test
+        @DisplayName("사고(thinking) 블록이 텍스트 없는 결과로 먼저 와도 텍스트가 있는 결과를 파싱한다")
+        void thinkingFirst_parsesTextResult() {
+            // given
+            givenResponseTexts("", "```json\n" + VALID_JSON + "```");
+
+            // when
+            AiItineraryResult result = client.generate(request());
+
+            // then
             assertThat(result.days().get(0).items().get(0).contentId()).isEqualTo("c1");
         }
     }
@@ -251,7 +271,23 @@ class OpenAiItineraryClientTest {
         @DisplayName("AI 응답이 null이면 ITINERARY_PROVIDER_FAILED 예외를 던진다")
         void nullResponse_throwsProviderFailed() {
             // given
-            givenEntity(null);
+            givenResponse(null);
+
+            // when
+            ThrowingCallable action = () -> client.generate(request());
+
+            // then
+            assertThatThrownBy(action)
+                    .isInstanceOf(PickTripException.class)
+                    .extracting("errorCode")
+                    .isEqualTo(ErrorCode.ITINERARY_PROVIDER_FAILED);
+        }
+
+        @Test
+        @DisplayName("텍스트 없이 사고 블록만 오면 ITINERARY_PROVIDER_FAILED 예외를 던진다")
+        void thinkingOnly_throwsProviderFailed() {
+            // given
+            givenResponseTexts("");
 
             // when
             ThrowingCallable action = () -> client.generate(request());
@@ -267,7 +303,7 @@ class OpenAiItineraryClientTest {
         @DisplayName("AI 응답의 일자(days)가 비어 있으면 ITINERARY_PROVIDER_FAILED 예외를 던진다")
         void emptyDays_throwsProviderFailed() {
             // given
-            givenEntity(new AiItineraryResult("제목만 있는 응답", List.of()));
+            givenResponseTexts("{\"title\": \"제목만 있는 응답\", \"days\": []}");
 
             // when
             ThrowingCallable action = () -> client.generate(request());
@@ -280,12 +316,11 @@ class OpenAiItineraryClientTest {
         }
 
         @Test
-        @DisplayName("네트워크 타임아웃(ResourceAccessException)이면 ITINERARY_GENERATION_TIMEOUT 예외를 던진다")
+        @DisplayName("네트워크 타임아웃(AnthropicIoException)이면 ITINERARY_GENERATION_TIMEOUT 예외를 던진다")
         void timeout_throwsGenerationTimeout() {
             // given
-            given(chatClient.prompt().system(anyString()).user(anyString()).call()
-                    .entity(AiItineraryResult.class))
-                    .willThrow(new ResourceAccessException("connect timed out"));
+            given(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
+                    .willThrow(new AnthropicIoException("Request timed out"));
 
             // when
             ThrowingCallable action = () -> client.generate(request());
@@ -301,8 +336,7 @@ class OpenAiItineraryClientTest {
         @DisplayName("제공자 장애·파싱 실패 등 일반 예외면 ITINERARY_PROVIDER_FAILED 예외를 던진다")
         void genericException_throwsProviderFailed() {
             // given
-            given(chatClient.prompt().system(anyString()).user(anyString()).call()
-                    .entity(AiItineraryResult.class))
+            given(chatClient.prompt().system(anyString()).user(anyString()).call().chatResponse())
                     .willThrow(new RuntimeException("provider 500"));
 
             // when
