@@ -56,11 +56,14 @@ public final class ItineraryPlanner {
         // 동률이면 먼저 시도한 AI 첫 장소 안이 남는다.
         // shortcut: 이동시간만 비교하고 운영시간 위반 수는 보지 않는다. 위반이 늘어난 안이 뽑힌다는 제보가 오면 비교 기준에 더한다.
         PlannedItinerary best = null;
+        int bestMinutes = Integer.MAX_VALUE;
         for (String start : coordinateIdsInOrder(filtered, places)) {
             PlannedItinerary candidate = planFrom(title, startingWith(filtered, start), places, reasons, travelDate,
                     context);
-            if (best == null || totalTravelMinutes(candidate) < totalTravelMinutes(best)) {
+            int minutes = routeMinutes(candidate, places, context);
+            if (minutes < bestMinutes) {
                 best = candidate;
+                bestMinutes = minutes;
             }
         }
         return best != null ? best : planFrom(title, filtered, places, reasons, travelDate, context);
@@ -118,8 +121,29 @@ public final class ItineraryPlanner {
         return result;
     }
 
-    private static int totalTravelMinutes(PlannedItinerary itinerary) {
-        return itinerary.days().stream().mapToInt(ScheduledDay::totalTravelMinutes).sum();
+    /**
+     * 하루 안 이동시간에 전날 마지막 장소 → 다음 날 첫 장소 이동을 더한 값.
+     * 일정은 다음 날이 전날 마지막 장소 근처에서 시작한다고 보므로, 날짜를 넘어가는 이동을 빼고 비교하면
+     * 하루 안은 짧아도 밤사이 크게 되돌아가는 안이 뽑힌다(#97 측정: 넣으면 총 이동이 3~5% 더 준다).
+     * 숙소 위치는 입력받지 않아 숙소 왕복은 들어가지 않는다.
+     */
+    private static int routeMinutes(PlannedItinerary itinerary, Map<String, SchedulingPlace> places,
+                                    SchedulingContext context) {
+        int minutes = 0;
+        SchedulingPlace previousLast = null;
+        for (ScheduledDay day : itinerary.days()) {
+            minutes += day.totalTravelMinutes();
+            if (day.stops().isEmpty()) {
+                continue;
+            }
+            if (previousLast != null) {
+                TravelMatrix.Leg overnight = context.legBetween(previousLast, places.get(day.stops().get(0).contentId()));
+                // DayScheduler 와 같게, 좌표가 없어 잴 수 없는 구간은 고정 추정치를 쓴다.
+                minutes += (overnight == null) ? SchedulingPolicy.UNKNOWN_HOP_MINUTES : overnight.minutes();
+            }
+            previousLast = places.get(day.stops().get(day.stops().size() - 1).contentId());
+        }
+        return minutes;
     }
 
     /**
