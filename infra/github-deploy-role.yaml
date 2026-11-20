@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: '2010-09-09'
+# IAM role that the "Deploy to EC2" GitHub Actions workflow assumes through OIDC.
+# The workflow uses it only to run the deploy script on the EC2 instance with
+# SSM Run Command, so port 22 can stay closed and no SSH key is stored in GitHub.
+#
+# NOTE: this file is intentionally pure ASCII. The AWS CLI on Windows reads template
+# files with the system codepage (cp949) and fails on UTF-8 bytes.
+Description: GitHub Actions OIDC role for deploying pick-trip-server to EC2 via SSM Run Command.
+
+Parameters:
+  GitHubRepository:
+    Type: String
+    Default: CMU02/pick-trip-server
+    Description: owner/repo allowed to assume the role
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Only workflow runs on this branch can assume the role
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+    Description: EC2 instance that receives the deploy command
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'true'
+    Description: Set to false if the account already has the token.actions.githubusercontent.com provider
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, 'true']
+
+Resources:
+  # Account-wide provider; other repositories may start using it, so keep it on stack deletion.
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Assumed by GitHub Actions to deploy pick-trip-server through SSM Run Command
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              # Ref of the provider returns its ARN and makes the role wait for it.
+              Federated: !If
+                - ShouldCreateOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepository}:ref:refs/heads/${GitHubBranch}
+      Policies:
+        - PolicyName: run-deploy-command
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              # SendCommand needs both the instance and the document as resources.
+              - Sid: SendDeployCommandToInstance
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${InstanceId}
+                  - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
+              # Reading command results does not support resource-level permissions.
+              - Sid: ReadCommandResult
+                Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                Resource: '*'
+
+Outputs:
+  DeployRoleArn:
+    Description: Set this as the AWS_DEPLOY_ROLE_ARN repository variable
+    Value: !GetAtt DeployRole.Arn
